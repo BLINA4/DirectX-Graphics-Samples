@@ -13,6 +13,8 @@
 **/src/obj
 **/.vs
 
+**/*.vcxproj
+
 *.hlsl.h
 **/Build_VS16
 **/Build
@@ -21,3 +23,5 @@
 *.opendb
 Samples/Desktop/D3D12HelloWorld/src/HelloVAResourceInterop/*.h264
 Samples/Desktop/D3D12HelloWorld/src/HelloVAEncode/*.h264
+*.vcxproj
+Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingSimpleLighting/D3D12RaytracingSimpleLighting.vcxproj

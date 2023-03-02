@@ -42,7 +42,9 @@ void MyRaygenShader()
         lerp(g_rayGenCB.viewport.top, g_rayGenCB.viewport.bottom, lerpValues.y),
         0.0f);
 
-    if (IsInsideViewport(origin.xy, g_rayGenCB.stencil))
+    Viewport vp = g_rayGenCB.stencil;
+
+    if (IsInsideViewport(origin.xy, vp))
     {
         // Trace the ray.
         // Set the ray's extents.
@@ -53,7 +55,7 @@ void MyRaygenShader()
         // TMin should be kept small to prevent missing geometry at close contact areas.
         ray.TMin = 0.001;
         ray.TMax = 10000.0;
-        RayPayload payload = { float4(0, 0, 0, 0) };
+        RayPayload payload = { float4((origin.y + 1.0f) / 2.0f, (origin.y + 1.0f) / 2.0f, (origin.x + 1.0f) / 2.0f, 0.0f)};
         TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
 
         // Write the raytraced color to the output texture.
@@ -69,8 +71,8 @@ void MyRaygenShader()
 [shader("closesthit")]
 void MyClosestHitShader(inout RayPayload payload, in MyAttributes attr)
 {
-    float3 barycentrics = float3(1 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
-    payload.color = float4(barycentrics, 1);
+    //float3 barycentrics = float3(1 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
+    //payload.color = float4(barycentrics, 1);
 }
 
 [shader("miss")]

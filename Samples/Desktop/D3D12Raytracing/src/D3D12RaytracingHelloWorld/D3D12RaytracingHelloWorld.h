@@ -70,7 +70,7 @@ private:
 
     // Geometry
     typedef UINT16 Index;
-    struct Vertex { float v1, v2, v3; };
+    struct Vertex { float v1, v2, v3, c1, c2, c3; };
     ComPtr<ID3D12Resource> m_indexBuffer;
     ComPtr<ID3D12Resource> m_vertexBuffer;
 

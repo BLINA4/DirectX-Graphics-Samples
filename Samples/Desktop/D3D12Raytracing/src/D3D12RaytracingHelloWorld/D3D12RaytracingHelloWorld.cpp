@@ -267,19 +267,21 @@ void D3D12RaytracingHelloWorld::BuildGeometry()
     auto device = m_deviceResources->GetD3DDevice();
     Index indices[] =
     {
-        0, 1, 2
+        0, 1, 2,
+        2, 3, 0
     };
 
     float depthValue = 1.0;
-    float offset = 0.7f;
+    float offset = 0.5f;
     Vertex vertices[] =
     {
         // The sample raytraces in screen space coordinates.
         // Since DirectX screen space coordinates are right handed (i.e. Y axis points down).
         // Define the vertices in counter clockwise order ~ clockwise in left handed.
-        { 0, -offset, depthValue },
-        { -offset, offset, depthValue },
-        { offset, offset, depthValue }
+        { -offset, -offset, depthValue, 1.0f, 0.0f, 0.0f },
+        { -offset,  offset, depthValue, 0.0f, 1.0f, 0.0f },
+        {  offset,  offset, depthValue, 0.0f, 0.0f, 1.0f },
+        {  offset, -offset, depthValue, 0.5f, 0.5f, 0.5f }
     };
 
     AllocateUploadBuffer(device, vertices, sizeof(vertices), &m_vertexBuffer);
