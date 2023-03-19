@@ -37,6 +37,7 @@ cbuffer HitShaderConstants : register(b0)
     float4 ShadowTexelSize;
     float4x4 ModelToShadow;
     uint IsReflection;
+    uint IsPathtrace;
     uint UseShadowRays;
 }
 

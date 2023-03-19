@@ -66,6 +66,7 @@ __declspec(align(16)) struct HitShaderConstants
     float ShadowTexelSize[4];
     Matrix4 modelToShadow;
     UINT32 IsReflection;
+    UINT32 IsPathtrace;
     UINT32 UseShadowRays;
 };
 
@@ -92,6 +93,7 @@ enum RaytracingTypes
     Reflectionbarycentric,
     Shadows,
     DiffuseHitShader,
+    PathTracing,
     Reflection,
     NumTypes
 };
@@ -266,7 +268,8 @@ const char* rayTracingModes[] = {
     "Shadow Rays", 
     "Diffuse&ShadowMaps",
     "Diffuse&ShadowRays",
-    "Reflection Rays"};
+    "Reflection Rays",
+    "Path Tracing"};
 enum RaytracingMode
 {
     RTM_OFF,
@@ -278,7 +281,7 @@ enum RaytracingMode
     RTM_REFLECTIONS,
     RTM_PATHTRACE,
 };
-EnumVar rayTracingMode("Application/Raytracing/RayTraceMode", RTM_DIFFUSE_WITH_SHADOWMAPS, _countof(rayTracingModes), rayTracingModes);
+EnumVar rayTracingMode("Application/Raytracing/RayTraceMode", RTM_PATHTRACE, _countof(rayTracingModes), rayTracingModes);
 
 class DescriptorHeapStack
 {
@@ -674,7 +677,19 @@ void InitializeRaytracingStateObjects(const ModelH3D &model, UINT numMeshes)
         g_RaytracingInputs[DiffuseHitShader] = RaytracingDispatchRayInputs(*g_pRaytracingDevice, pDiffusePSO, pHitShaderTable.data(), shaderRecordSizeInBytes, (UINT)pHitShaderTable.size(), rayGenExportName, missExportName);
     }
 
-   {
+    {
+        ReplaceDxilLibrary(pStateObjectDesc, g_pRayGenerationShaderLib, rayGenExportName);
+        ReplaceDxilLibrary(pStateObjectDesc, g_pDiffuseHitShaderLib, hitExportName);
+        ReplaceDxilLibrary(pStateObjectDesc, g_pmissShaderLib, missExportName);
+
+        CComPtr<ID3D12StateObject> pPathTracePSO;
+        g_pRaytracingDevice->CreateStateObject(pStateObjectDesc, IID_PPV_ARGS(&pPathTracePSO));
+
+        GetShaderTable(model, pPathTracePSO, pHitShaderTable.data());
+        g_RaytracingInputs[PathTracing] = RaytracingDispatchRayInputs(*g_pRaytracingDevice, pPathTracePSO, pHitShaderTable.data(), shaderRecordSizeInBytes, (UINT)pHitShaderTable.size(), rayGenExportName, missExportName);
+    }
+
+    {
         ReplaceDxilLibrary(pStateObjectDesc, g_pRayGenerationShaderSSRLib, rayGenExportName);
         ReplaceDxilLibrary(pStateObjectDesc, g_pDiffuseHitShaderLib, hitExportName);
         ReplaceDxilLibrary(pStateObjectDesc, g_pmissShaderLib, missExportName);
@@ -1318,7 +1333,54 @@ void D3D12RaytracingMiniEngineSample::Pathtrace(
     DepthBuffer& depth, 
     ColorBuffer& normals)
 {
+    ScopedTimer _p0(L"Pathtracing", context);
 
+    // Prepare constants
+    DynamicCB inputs = g_dynamicCb;
+    auto m0 = camera.GetViewProjMatrix();
+    auto m1 = Transpose(Invert(m0));
+    memcpy(&inputs.cameraToWorld, &m1, sizeof(inputs.cameraToWorld));
+    memcpy(&inputs.worldCameraPosition, &camera.GetPosition(), sizeof(inputs.worldCameraPosition));
+    inputs.resolution.x = (float)colorTarget.GetWidth();
+    inputs.resolution.y = (float)colorTarget.GetHeight();
+
+    HitShaderConstants hitShaderConstants = {};
+    hitShaderConstants.sunDirection = Sponza::m_SunDirection;
+    hitShaderConstants.sunLight = Vector3(1.0f, 1.0f, 1.0f) * Sponza::m_SunLightIntensity;
+    hitShaderConstants.ambientLight = Vector3(1.0f, 1.0f, 1.0f) * Sponza::m_AmbientIntensity;
+    hitShaderConstants.ShadowTexelSize[0] = 1.0f / g_ShadowBuffer.GetWidth();
+    hitShaderConstants.modelToShadow = Transpose(Sponza::m_SunShadow.GetShadowMatrix());
+    hitShaderConstants.IsReflection = false;
+    hitShaderConstants.IsPathtrace = true;
+    hitShaderConstants.UseShadowRays = rayTracingMode == RTM_DIFFUSE_WITH_SHADOWRAYS;
+    context.WriteBuffer(g_hitConstantBuffer, 0, &hitShaderConstants, sizeof(hitShaderConstants));
+    context.WriteBuffer(g_dynamicConstantBuffer, 0, &inputs, sizeof(inputs));
+
+    context.TransitionResource(g_dynamicConstantBuffer, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+    context.TransitionResource(g_SSAOFullScreen, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    context.TransitionResource(g_hitConstantBuffer, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+    context.TransitionResource(g_ShadowBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    context.TransitionResource(colorTarget, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    context.FlushResourceBarriers();
+
+    ID3D12GraphicsCommandList* pCommandList = context.GetCommandList();
+
+    CComPtr<ID3D12GraphicsCommandList4> pPathtracingCommandList;
+    pCommandList->QueryInterface(IID_PPV_ARGS(&pPathtracingCommandList));
+
+    ID3D12DescriptorHeap* pDescriptorHeaps[] = { &g_pRaytracingDescriptorHeap->GetDescriptorHeap() };
+    pPathtracingCommandList->SetDescriptorHeaps(ARRAYSIZE(pDescriptorHeaps), pDescriptorHeaps);
+
+    pCommandList->SetComputeRootSignature(g_GlobalRaytracingRootSignature);
+    pCommandList->SetComputeRootDescriptorTable(0, g_SceneSrvs);
+    pCommandList->SetComputeRootConstantBufferView(1, g_hitConstantBuffer.GetGpuVirtualAddress());
+    pCommandList->SetComputeRootConstantBufferView(2, g_dynamicConstantBuffer.GetGpuVirtualAddress());
+    pCommandList->SetComputeRootDescriptorTable(4, g_OutputUAV);
+    pPathtracingCommandList->SetComputeRootShaderResourceView(7, g_bvh_topLevelAccelerationStructure->GetGPUVirtualAddress());
+
+    D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc = g_RaytracingInputs[PathTracing].GetDispatchRayDesc(colorTarget.GetWidth(), colorTarget.GetHeight());
+    pPathtracingCommandList->SetPipelineState1(g_RaytracingInputs[PathTracing].m_pPSO);
+    pPathtracingCommandList->DispatchRays(&dispatchRaysDesc);
 }
 
 void D3D12RaytracingMiniEngineSample::RenderUI(class GraphicsContext& gfxContext)
