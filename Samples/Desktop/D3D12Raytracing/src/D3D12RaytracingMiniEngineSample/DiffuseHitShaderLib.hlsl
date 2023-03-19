@@ -1,40 +1,26 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// This code is licensed under the MIT License (MIT).
-// THIS CODE IS PROVIDED *AS IS* WITHOUT WARRANTY OF
-// ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING ANY
-// IMPLIED WARRANTIES OF FITNESS FOR A PARTICULAR
-// PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
-//
-// Developed by Minigraph
-//
-// Author(s):    James Stanard, Christopher Wallis
-//
-
 #define HLSL
 #include "ModelViewerRaytracing.h"
 #include "RayTracingHlslCompat.h"
 
-cbuffer Material : register(b3)
+cbuffer Material                                  : register(b3)
 {
     uint MaterialID;
 }
 
-StructuredBuffer<RayTraceMeshInfo> g_meshInfo : register(t1);
-ByteAddressBuffer g_indices : register(t2);
-ByteAddressBuffer g_attributes : register(t3);
-Texture2D<float> texShadow : register(t4);
-Texture2D<float> texSSAO : register(t5);
-SamplerState      g_s0 : register(s0);
-SamplerComparisonState shadowSampler : register(s1);
+StructuredBuffer<RayTraceMeshInfo> g_meshInfo     : register(t1);
+ByteAddressBuffer                  g_indices      : register(t2);
+ByteAddressBuffer                  g_attributes   : register(t3);
+Texture2D<float>                   texShadow      : register(t4);
+Texture2D<float>                   texSSAO        : register(t5);
+SamplerState                       g_s0           : register(s0);
+SamplerComparisonState             shadowSampler  : register(s1);
 
-Texture2D<float4> g_localTexture : register(t6);
-Texture2D<float4> g_localNormal : register(t7);
+Texture2D<float4>                  g_localTexture : register(t6);
+Texture2D<float4>                  g_localNormal  : register(t7);
 
-Texture2D<float4>   normals  : register(t13);
+Texture2D<float4>                  normals        : register(t13);
 
-uint3 Load3x16BitIndices(
-    uint offsetBytes)
+uint3 Load3x16BitIndices( uint offsetBytes )
 {
     const uint dwordAlignedOffset = offsetBytes & ~3;
 
@@ -58,7 +44,7 @@ uint3 Load3x16BitIndices(
     return indices;
 }
 
-float GetShadow(float3 ShadowCoord)
+float GetShadow( float3 ShadowCoord )
 {
     const float Dilation = 2.0;
     float d1 = Dilation * ShadowTexelSize.x * 0.125;
@@ -67,24 +53,24 @@ float GetShadow(float3 ShadowCoord)
     float d4 = Dilation * ShadowTexelSize.x * 0.375;
     float result = (
         2.0 * texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy, ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(-d2, d1), ShadowCoord.z) +
+        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(-d2,  d1), ShadowCoord.z) +
         texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(-d1, -d2), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(d2, -d1), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(d1, d2), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(-d4, d3), ShadowCoord.z) +
+        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2( d2, -d1), ShadowCoord.z) +
+        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2( d1,  d2), ShadowCoord.z) +
+        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(-d4,  d3), ShadowCoord.z) +
         texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(-d3, -d4), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(d4, -d3), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(d3, d4), ShadowCoord.z)
+        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2( d4, -d3), ShadowCoord.z) +
+        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2( d3,  d4), ShadowCoord.z)
         ) / 10.0;
     return result * result;
 }
 
-float2 GetUVAttribute(uint byteOffset)
+float2 GetUVAttribute( uint byteOffset )
 {
     return asfloat(g_attributes.Load2(byteOffset));
 }
 
-void AntiAliasSpecular(inout float3 texNormal, inout float gloss)
+void AntiAliasSpecular( inout float3 texNormal, inout float gloss )
 {
     float normalLenSq = dot(texNormal, texNormal);
     float invNormalLen = rsqrt(normalLenSq);
@@ -93,7 +79,7 @@ void AntiAliasSpecular(inout float3 texNormal, inout float gloss)
 }
 
 // Apply fresnel to modulate the specular albedo
-void FSchlick(inout float3 specular, inout float3 diffuse, float3 lightDir, float3 halfVec)
+void FSchlick( inout float3 specular, inout float3 diffuse, float3 lightDir, float3 halfVec )
 {
     float fresnel = pow(1.0 - saturate(dot(lightDir, halfVec)), 5.0);
     specular = lerp(specular, 1, fresnel);
@@ -101,14 +87,14 @@ void FSchlick(inout float3 specular, inout float3 diffuse, float3 lightDir, floa
 }
 
 float3 ApplyLightCommon(
-    float3    diffuseColor,    // Diffuse albedo
-    float3    specularColor,    // Specular albedo
-    float    specularMask,    // Where is it shiny or dingy?
-    float    gloss,            // Specular power
-    float3    normal,            // World-space normal
+    float3    diffuseColor,   // Diffuse albedo
+    float3    specularColor,  // Specular albedo
+    float     specularMask,   // Where is it shiny or dingy?
+    float     gloss,          // Specular power
+    float3    normal,         // World-space normal
     float3    viewDir,        // World-space vector from eye to point
-    float3    lightDir,        // World-space vector from point to light
-    float3    lightColor        // Radiance of directional light
+    float3    lightDir,       // World-space vector from point to light
+    float3    lightColor      // Radiance of directional light
 )
 {
     float3 halfVec = normalize(lightDir - viewDir);
@@ -123,17 +109,13 @@ float3 ApplyLightCommon(
     return nDotL * lightColor * (diffuseColor + specularFactor * specularColor);
 }
 
-float3 RayPlaneIntersection(float3 planeOrigin, float3 planeNormal, float3 rayOrigin, float3 rayDirection)
+float3 RayPlaneIntersection( float3 planeOrigin, float3 planeNormal, float3 rayOrigin, float3 rayDirection )
 {
     float t = dot(-planeNormal, rayOrigin - planeOrigin) / dot(planeNormal, rayDirection);
     return rayOrigin + rayDirection * t;
 }
 
-/*
-    REF: https://gamedev.stackexchange.com/questions/23743/whats-the-most-efficient-way-to-find-barycentric-coordinates
-    From "Real-Time Collision Detection" by Christer Ericson
-*/
-float3 BarycentricCoordinates(float3 pt, float3 v0, float3 v1, float3 v2)
+float3 BarycentricCoordinates( float3 pt, float3 v0, float3 v1, float3 v2 )
 {
     float3 e0 = v1 - v0;
     float3 e1 = v2 - v0;
@@ -151,7 +133,7 @@ float3 BarycentricCoordinates(float3 pt, float3 v0, float3 v1, float3 v2)
 }
 
 [shader("closesthit")]
-void Hit(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
+void Hit( inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr )
 {
     payload.RayHitT = RayTCurrent();
     if (payload.SkipShading)

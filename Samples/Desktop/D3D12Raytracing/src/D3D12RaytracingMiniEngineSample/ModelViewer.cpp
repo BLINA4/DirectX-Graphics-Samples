@@ -96,7 +96,7 @@ enum RaytracingTypes
     NumTypes
 };
 
-const static UINT MaxRayRecursion = 2;
+const static UINT MaxRayRecursion = 3;
 
 const static UINT c_NumCameraPositions = 5;
 
@@ -186,9 +186,14 @@ public:
 
 private:
 
-    void RaytraceDiffuse(GraphicsContext& context, const Math::Camera& camera, ColorBuffer& colorTarget);
-    void RaytraceShadows(GraphicsContext& context, const Math::Camera& camera, ColorBuffer& colorTarget, DepthBuffer& depth);
-    void RaytraceReflections(GraphicsContext& context, const Math::Camera& camera, ColorBuffer& colorTarget, DepthBuffer& depth, ColorBuffer& normals);
+    void RaytraceDiffuse    
+        (GraphicsContext& context, const Math::Camera& camera, ColorBuffer& colorTarget);
+    void RaytraceShadows    
+        (GraphicsContext& context, const Math::Camera& camera, ColorBuffer& colorTarget, DepthBuffer& depth);
+    void RaytraceReflections
+        (GraphicsContext& context, const Math::Camera& camera, ColorBuffer& colorTarget, DepthBuffer& depth, ColorBuffer& normals);
+    void Pathtrace          
+        (GraphicsContext& context, const Math::Camera& camera, ColorBuffer& colorTarget, DepthBuffer& depth, ColorBuffer& normals);
 
     Camera m_Camera;
     std::unique_ptr<FlyingFPSCamera> m_CameraController;
@@ -271,6 +276,7 @@ enum RaytracingMode
     RTM_DIFFUSE_WITH_SHADOWMAPS,
     RTM_DIFFUSE_WITH_SHADOWRAYS,
     RTM_REFLECTIONS,
+    RTM_PATHTRACE,
 };
 EnumVar rayTracingMode("Application/Raytracing/RayTraceMode", RTM_DIFFUSE_WITH_SHADOWMAPS, _countof(rayTracingModes), rayTracingModes);
 
@@ -1305,6 +1311,16 @@ void D3D12RaytracingMiniEngineSample::RaytraceReflections(
     pRaytracingCommandList->DispatchRays(&dispatchRaysDesc);
 }
 
+void D3D12RaytracingMiniEngineSample::Pathtrace(
+    GraphicsContext& context,
+    const Math::Camera& camera, 
+    ColorBuffer& colorTarget, 
+    DepthBuffer& depth, 
+    ColorBuffer& normals)
+{
+
+}
+
 void D3D12RaytracingMiniEngineSample::RenderUI(class GraphicsContext& gfxContext)
 {
     const UINT framesToAverage = 20;
@@ -1350,6 +1366,10 @@ void D3D12RaytracingMiniEngineSample::Raytrace(class GraphicsContext& gfxContext
 
     case RTM_REFLECTIONS:
         RaytraceReflections(gfxContext, m_Camera, g_SceneColorBuffer, g_SceneDepthBuffer, g_SceneNormalBuffer);
+        break;
+
+    case RTM_PATHTRACE:
+        Pathtrace(gfxContext, m_Camera, g_SceneColorBuffer, g_SceneDepthBuffer, g_SceneNormalBuffer);
         break;
     }
 
