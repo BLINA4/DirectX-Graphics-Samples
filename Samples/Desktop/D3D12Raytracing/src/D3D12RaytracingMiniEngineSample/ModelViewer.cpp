@@ -957,6 +957,8 @@ void D3D12RaytracingMiniEngineSample::Update( float deltaT )
       rayTracingMode = RTM_DIFFUSE_WITH_SHADOWRAYS;
     else if(GameInput::IsFirstPressed(GameInput::kKey_7))
       rayTracingMode = RTM_REFLECTIONS;
+    else if(GameInput::IsFirstPressed(GameInput::kKey_8))
+      rayTracingMode = RTM_PATHTRACE;
     
     static bool freezeCamera = false;
     
