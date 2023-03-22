@@ -356,9 +356,7 @@ std::unique_ptr<DescriptorHeapStack> g_pRaytracingDescriptorHeap;
 
 StructuredBuffer    g_hitShaderMeshInfoBuffer;
 
-static
-void InitializeSceneInfo(
-    const ModelH3D& model)
+static void InitializeSceneInfo( const ModelH3D& model )
 {
     //
     // Mesh info
@@ -385,8 +383,7 @@ void InitializeSceneInfo(
     g_SceneMeshInfo = g_hitShaderMeshInfoBuffer.GetSRV();
 }
 
-static
-void InitializeViews(const ModelH3D& model)
+static void InitializeViews( const ModelH3D& model )
 {
     D3D12_CPU_DESCRIPTOR_HANDLE uavHandle;
     UINT uavDescriptorIndex;
@@ -715,6 +712,7 @@ void D3D12RaytracingMiniEngineSample::Startup( void )
     TemporalEffects::EnableTAA = false;//true;
     FXAA::Enable = false;
     PostEffects::EnableHDR = false;//true;
+    PostEffects::BloomEnable = false;
     PostEffects::EnableAdaptation = false;//true;
     SSAO::Enable = true;
 
@@ -944,19 +942,21 @@ void D3D12RaytracingMiniEngineSample::Update( float deltaT )
     else if (GameInput::IsFirstPressed(GameInput::kRShoulder))
         DebugZoom.Increment();
     else if(GameInput::IsFirstPressed(GameInput::kKey_1))
-      rayTracingMode = RTM_OFF;
+        rayTracingMode = RTM_OFF;
     else if(GameInput::IsFirstPressed(GameInput::kKey_2))
-      rayTracingMode = RTM_TRAVERSAL;
+        rayTracingMode = RTM_TRAVERSAL;
     else if(GameInput::IsFirstPressed(GameInput::kKey_3))
-      rayTracingMode = RTM_SSR;
+        rayTracingMode = RTM_SSR;
     else if(GameInput::IsFirstPressed(GameInput::kKey_4))
-      rayTracingMode = RTM_SHADOWS;
+        rayTracingMode = RTM_SHADOWS;
     else if(GameInput::IsFirstPressed(GameInput::kKey_5))
-      rayTracingMode = RTM_DIFFUSE_WITH_SHADOWMAPS;
+        rayTracingMode = RTM_DIFFUSE_WITH_SHADOWMAPS;
     else if(GameInput::IsFirstPressed(GameInput::kKey_6))
-      rayTracingMode = RTM_DIFFUSE_WITH_SHADOWRAYS;
+        rayTracingMode = RTM_DIFFUSE_WITH_SHADOWRAYS;
     else if(GameInput::IsFirstPressed(GameInput::kKey_7))
-      rayTracingMode = RTM_REFLECTIONS;
+        rayTracingMode = RTM_REFLECTIONS;
+    else if (GameInput::IsFirstPressed(GameInput::kKey_8))
+        rayTracingMode = RTM_PATHTRACE;
     
     static bool freezeCamera = false;
     
