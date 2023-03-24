@@ -48,30 +48,36 @@ void RayGen()
         float  metallness = payload.MetallRoughness.b;
         float  roughness  = payload.MetallRoughness.g;
 
-        radiance += roughness * throughput;
-
         // Account for emissive surfaces (currently not supported)
         // radiance += throughput * material.emissive;
 
         // Evaluate direct light (next event estimation), start by sampling one light 
-        //Light light;
-        //float lightWeight;
-        //if (sampleLightRIS(rngState, payload.hitPosition, geometryNormal, light, lightWeight))
-        //{
+        Light sun;
+        sun.type = DIRECTIONAL_LIGHT;
+        sun.intensity = float3(0.7f, 0.7f, 0.7f);
+        sun.position = float3(300.0f, 1000.0f, 100.0f);
+        sun.pad = 0;
+
+        float lightWeight = 1.0f;
+        if (true /*sampleLightRIS(rngState, payload.hitPosition, geometryNormal, light, lightWeight)*/)
+        {
             // Prepare data needed to evaluate the light
-        //    float3 lightVector;
-        //    float lightDistance;
-        //    getLightData(light, payload.hitPosition, lightVector, lightDistance);
-        //    float3 L = normalize(lightVector);
+            float3 lightVector;
+            float lightDistance;
+            getLightData(sun, payload.hitPosition, lightVector, lightDistance);
+            float3 L = normalize(lightVector);
 
             // Cast shadow ray towards the selected light
-        //    if (SHADOW_RAY_IN_RIS || castShadowRay(payload.hitPosition, geometryNormal, L, lightDistance))
-        //    {
+            if (castShadowRay(payload.hitPosition, geometryNormal, L, lightDistance))
+            {
                 // If light is not in shadow, evaluate BRDF and accumulate its contribution into radiance
-        //        radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, material) * (getLightIntensityAtPoint(light, lightDistance) * lightWeight);
-        //    }
-        //}
+                radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, albedo, metallness, roughness)
+                    * (getLightIntensityAtPoint(sun, lightDistance) * lightWeight);
+            }
+
+            g_screenOutput[DispatchRaysIndex().xy] = float4(radiance, 1.0f);
+        }
     }
 
-    g_screenOutput[DispatchRaysIndex().xy] = float4(radiance, 1.0f);
+    //g_screenOutput[DispatchRaysIndex().xy] = float4(radiance, 1.0f);
 }
