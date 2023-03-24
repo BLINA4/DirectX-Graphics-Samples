@@ -24,7 +24,7 @@ void RayGen()
     float3 radiance = float3(0.0f, 0.0f, 0.0f);
     float3 throughput = float3(1.0f, 1.0f, 1.0f);
 
-    for (int bounce = 0; bounce < 5; bounce++)
+    for (int bounce = 0; bounce < 1; bounce++)
     {
         TraceRay(g_accel, RAY_FLAG_NONE, 0xFF, STANDARD_RAY_INDEX, 1, STANDARD_RAY_INDEX, rayDesc, payload);
 
@@ -41,13 +41,14 @@ void RayGen()
         decodeNormals(payload.encodedNormals, geometryNormal, shadingNormal);
 
         float3 V = -rayDesc.Direction;
-        if (dot(geometryNormal, V) < 0.0f) geometryNormal = -geometryNormal;
-        if (dot(geometryNormal, shadingNormal) < 0.0f) shadingNormal = -shadingNormal;
+        if (dot(geometryNormal, V) < 0.0f)             geometryNormal = -geometryNormal;
+        if (dot(geometryNormal, shadingNormal) < 0.0f) shadingNormal  = -shadingNormal;
 
-        float3 albedo = payload.Albedo;
-        float3 metallness = payload.Metallness;
+        float3 albedo     = payload.Albedo;
+        float  metallness = payload.MetallRoughness.b;
+        float  roughness  = payload.MetallRoughness.g;
 
-        radiance += albedo / 5.0f;
+        radiance += roughness * throughput;
 
         // Account for emissive surfaces (currently not supported)
         // radiance += throughput * material.emissive;

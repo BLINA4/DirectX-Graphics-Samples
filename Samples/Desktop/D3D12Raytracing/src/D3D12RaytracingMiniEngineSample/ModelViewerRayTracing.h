@@ -36,7 +36,7 @@ struct HitInfo
 {
     float4  encodedNormals;
     float3  Albedo;
-    float3  Metallness;
+    float3  MetallRoughness;
     float3  hitPosition;
     uint    materialID;
     uint    triangleID;
@@ -52,7 +52,7 @@ SamplerState                       g_s0                 : register(s0);
 SamplerComparisonState             shadowSampler        : register(s1);
 
 Texture2D<float4>                  g_localTexture       : register(t6);
-Texture2D<float4>                  g_localMetallness    : register(t7);
+Texture2D<float4>                  g_localMetalRough    : register(t7);
 Texture2D<float4>                  g_localNormal        : register(t8);
 
 Texture2D<float4>                  normals              : register(t13);

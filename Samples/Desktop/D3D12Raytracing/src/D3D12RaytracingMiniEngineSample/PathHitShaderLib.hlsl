@@ -85,14 +85,14 @@ void Hit( inout HitInfo payload, in BuiltInTriangleIntersectionAttributes attr )
     //---------------------------------------------------------------------------------------------
 
     // Load material values
-    const float3 diffuseColor = g_localTexture.SampleGrad(g_s0, payload.uvs, ddxUV, ddyUV).rgb;
-    const float3 metallnessColor = g_localMetallness.SampleGrad(g_s0, payload.uvs, ddxUV, ddyUV).rgb;
+    const float3 diffuseColor    = g_localTexture.SampleGrad(g_s0, uv, ddxUV, ddyUV).rgb;
+    const float3 MetallRoughness = g_localMetalRough.SampleGrad(g_s0, uv, ddxUV, ddyUV).rgb;
     float3 normal = g_localNormal.SampleGrad(g_s0, uv, ddxUV, ddyUV).rgb * 2.0 - 1.0;
     float3x3 tbn = float3x3(vsTangent, vsBitangent, vsNormal);
     normal = normalize(mul(normal, tbn));
 
     payload.Albedo                  = diffuseColor;
-    payload.Metallness              = metallnessColor;
+    payload.MetallRoughness         = MetallRoughness;
     payload.encodedNormals          = encodeNormals(vsNormal, normal);
     payload.materialID              = materialID;
     payload.triangleID              = triangleID;
