@@ -48,6 +48,9 @@
 #include "CompiledShaders/DiffuseHitShaderLib.h"
 #include "CompiledShaders/RayGenerationShadowsLib.h"
 #include "CompiledShaders/MissShadowsLib.h"
+#include "CompiledShaders/PathTraceShaderLib.h"
+#include "CompiledShaders/PathHitShaderLib.h"
+#include "CompiledShaders/PathMissShaderLib.h"
 
 #include "RaytracingHlslCompat.h"
 #include "ModelViewerRayTracing.h"
@@ -66,7 +69,6 @@ __declspec(align(16)) struct HitShaderConstants
     float ShadowTexelSize[4];
     Matrix4 modelToShadow;
     UINT32 IsReflection;
-    UINT32 IsPathtrace;
     UINT32 UseShadowRays;
 };
 
@@ -592,7 +594,7 @@ void InitializeRaytracingStateObjects(const ModelH3D &model, UINT numMeshes)
     SetDxilLibrary(stateObjectDesc, g_pmissShaderLib, missExportName);
 
     auto shaderConfigStateObject = stateObjectDesc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-    shaderConfigStateObject->Config(8, 8);
+    shaderConfigStateObject->Config(64, 32);
 
     LPCWSTR hitGroupExportName = L"HitGroup";
     auto hitGroupSubobject = stateObjectDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
@@ -675,9 +677,9 @@ void InitializeRaytracingStateObjects(const ModelH3D &model, UINT numMeshes)
     }
 
     {
-        ReplaceDxilLibrary(pStateObjectDesc, g_pRayGenerationShaderLib, rayGenExportName);
-        ReplaceDxilLibrary(pStateObjectDesc, g_pDiffuseHitShaderLib, hitExportName);
-        ReplaceDxilLibrary(pStateObjectDesc, g_pmissShaderLib, missExportName);
+        ReplaceDxilLibrary(pStateObjectDesc, g_pPathTraceShaderLib, rayGenExportName);
+        ReplaceDxilLibrary(pStateObjectDesc, g_pPathHitShaderLib, hitExportName);
+        ReplaceDxilLibrary(pStateObjectDesc, g_pPathMissShaderLib, missExportName);
 
         CComPtr<ID3D12StateObject> pPathTracePSO;
         g_pRaytracingDevice->CreateStateObject(pStateObjectDesc, IID_PPV_ARGS(&pPathTracePSO));
@@ -1351,7 +1353,6 @@ void D3D12RaytracingMiniEngineSample::Pathtrace(
     hitShaderConstants.ShadowTexelSize[0] = 1.0f / g_ShadowBuffer.GetWidth();
     hitShaderConstants.modelToShadow = Transpose(Sponza::m_SunShadow.GetShadowMatrix());
     hitShaderConstants.IsReflection = false;
-    hitShaderConstants.IsPathtrace = true;
     hitShaderConstants.UseShadowRays = rayTracingMode == RTM_DIFFUSE_WITH_SHADOWRAYS;
     context.WriteBuffer(g_hitConstantBuffer, 0, &hitShaderConstants, sizeof(hitShaderConstants));
     context.WriteBuffer(g_dynamicConstantBuffer, 0, &inputs, sizeof(inputs));

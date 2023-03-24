@@ -12,7 +12,6 @@
 #define HLSL
 #include "ModelViewerRaytracing.h"
 
-
 [shader("raygeneration")]
 void RayGen()
 {

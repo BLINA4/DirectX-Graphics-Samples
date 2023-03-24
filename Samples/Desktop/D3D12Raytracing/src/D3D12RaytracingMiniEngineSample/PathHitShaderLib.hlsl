@@ -1,5 +1,7 @@
 #define HLSL
-#include "ModelViewerRaytracing.h"
+#define PATHTRACE
+
+#include "ModelViewerRayTracing.h"
 #include "RayTracingHlslCompat.h"
 
 cbuffer Material                                  : register(b3)
@@ -7,7 +9,7 @@ cbuffer Material                                  : register(b3)
     uint MaterialID;
 }
 
-StructuredBuffer<RayTraceMeshInfo> g_meshInfo     : register(t1);
+StructuredBuffer<RayTraceMeshInfo> g_meshInfo     : register(t1); 
 ByteAddressBuffer                  g_indices      : register(t2);
 ByteAddressBuffer                  g_attributes   : register(t3);
 Texture2D<float>                   texShadow      : register(t4);
@@ -44,78 +46,18 @@ uint3 Load3x16BitIndices( uint offsetBytes )
     return indices;
 }
 
-float GetShadow( float3 ShadowCoord )
-{
-    const float Dilation = 2.0;
-    float d1 = Dilation * ShadowTexelSize.x * 0.125;
-    float d2 = Dilation * ShadowTexelSize.x * 0.875;
-    float d3 = Dilation * ShadowTexelSize.x * 0.625;
-    float d4 = Dilation * ShadowTexelSize.x * 0.375;
-    float result = (
-        2.0 * texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy, ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(-d2,  d1), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(-d1, -d2), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2( d2, -d1), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2( d1,  d2), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(-d4,  d3), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2(-d3, -d4), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2( d4, -d3), ShadowCoord.z) +
-        texShadow.SampleCmpLevelZero(shadowSampler, ShadowCoord.xy + float2( d3,  d4), ShadowCoord.z)
-        ) / 10.0;
-    return result * result;
-}
-
 float2 GetUVAttribute( uint byteOffset )
 {
     return asfloat(g_attributes.Load2(byteOffset));
 }
 
-void AntiAliasSpecular( inout float3 texNormal, inout float gloss )
-{
-    float normalLenSq = dot(texNormal, texNormal);
-    float invNormalLen = rsqrt(normalLenSq);
-    texNormal *= invNormalLen;
-    gloss = lerp(1, gloss, rcp(invNormalLen));
-}
-
-// Apply fresnel to modulate the specular albedo
-void FSchlick( inout float3 specular, inout float3 diffuse, float3 lightDir, float3 halfVec )
-{
-    float fresnel = pow(1.0 - saturate(dot(lightDir, halfVec)), 5.0);
-    specular = lerp(specular, 1, fresnel);
-    diffuse = lerp(diffuse, 0, fresnel);
-}
-
-float3 ApplyLightCommon(
-    float3    diffuseColor,   // Diffuse albedo
-    float3    specularColor,  // Specular albedo
-    float     specularMask,   // Where is it shiny or dingy?
-    float     gloss,          // Specular power
-    float3    normal,         // World-space normal
-    float3    viewDir,        // World-space vector from eye to point
-    float3    lightDir,       // World-space vector from point to light
-    float3    lightColor      // Radiance of directional light
-)
-{
-    float3 halfVec = normalize(lightDir - viewDir);
-    float nDotH = saturate(dot(halfVec, normal));
-
-    FSchlick(specularColor, diffuseColor, lightDir, halfVec);
-
-    float specularFactor = specularMask * pow(nDotH, gloss) * (gloss + 2) / 8;
-
-    float nDotL = saturate(dot(normal, lightDir));
-
-    return nDotL * lightColor * (diffuseColor + specularFactor * specularColor);
-}
-
-float3 RayPlaneIntersection( float3 planeOrigin, float3 planeNormal, float3 rayOrigin, float3 rayDirection )
+float3 RayPlaneIntersection(float3 planeOrigin, float3 planeNormal, float3 rayOrigin, float3 rayDirection)
 {
     float t = dot(-planeNormal, rayOrigin - planeOrigin) / dot(planeNormal, rayDirection);
     return rayOrigin + rayDirection * t;
 }
 
-float3 BarycentricCoordinates( float3 pt, float3 v0, float3 v1, float3 v2 )
+float3 BarycentricCoordinates(float3 pt, float3 v0, float3 v1, float3 v2)
 {
     float3 e0 = v1 - v0;
     float3 e1 = v2 - v0;
@@ -133,14 +75,8 @@ float3 BarycentricCoordinates( float3 pt, float3 v0, float3 v1, float3 v2 )
 }
 
 [shader("closesthit")]
-void Hit( inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr )
+void Hit( inout HitInfo payload, in BuiltInTriangleIntersectionAttributes attr )
 {
-    payload.RayHitT = RayTCurrent();
-    if (payload.SkipShading)
-    {
-        return;
-    }
-
     uint materialID = MaterialID;
     uint triangleID = PrimitiveIndex();
 
@@ -213,62 +149,12 @@ void Hit( inout RayPayload payload, in BuiltInTriangleIntersectionAttributes att
     //---------------------------------------------------------------------------------------------
 
     const float3 diffuseColor = g_localTexture.SampleGrad(g_s0, uv, ddxUV, ddyUV).rgb;
-    float3 normal;
-    float3 specularAlbedo = float3(0.56, 0.56, 0.56);
-    float specularMask = 0;     // TODO: read the texture
-    float gloss = 128.0;
-    {
-        normal = g_localNormal.SampleGrad(g_s0, uv, ddxUV, ddyUV).rgb * 2.0 - 1.0;
-        AntiAliasSpecular(normal, gloss);
-        float3x3 tbn = float3x3(vsTangent, vsBitangent, vsNormal);
-        normal = normalize(mul(normal, tbn));
-    }
+    float3 normal = g_localNormal.SampleGrad(g_s0, uv, ddxUV, ddyUV).rgb * 2.0 - 1.0;
+    float3x3 tbn = float3x3(vsTangent, vsBitangent, vsNormal);
+    normal = normalize(mul(normal, tbn));
 
-    float3 outputColor = AmbientColor * diffuseColor * texSSAO[DispatchRaysIndex().xy];
-
-    float shadow = 1.0;
-    if (UseShadowRays)
-    {
-        float3 shadowDirection = SunDirection;
-        float3 shadowOrigin = worldPosition;
-        RayDesc rayDesc = { shadowOrigin,
-            0.1f,
-            shadowDirection,
-            FLT_MAX };
-        RayPayload shadowPayload;
-        shadowPayload.SkipShading = true;
-        shadowPayload.RayHitT = FLT_MAX;
-        TraceRay(g_accel, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, ~0, 0, 1, 0, rayDesc, shadowPayload);
-        if (shadowPayload.RayHitT < FLT_MAX)
-        {
-            shadow = 0.0;
-        }
-    }
-    else
-    {
-        // TODO: This could be pre-calculated once per vertex if this mul per pixel was a concern
-        float4 shadowCoord = mul(ModelToShadow, float4(worldPosition, 1.0f));
-        shadow = GetShadow(shadowCoord.xyz);
-    }
-
-    const float3 viewDir = normalize(-WorldRayDirection());
-
-    outputColor += shadow * ApplyLightCommon(
-        diffuseColor,
-        specularAlbedo,
-        specularMask,
-        gloss,
-        normal,
-        viewDir,
-        SunDirection,
-        SunColor);
-
-    // TODO: Should be passed in via material info
-    if (IsReflection)
-    {
-        float reflectivity = normals[DispatchRaysIndex().xy].w;
-        outputColor = g_screenOutput[DispatchRaysIndex().xy].rgb + reflectivity * outputColor;
-    }
-
-    g_screenOutput[DispatchRaysIndex().xy] = float4(outputColor, 1.0);
+    payload.encodedNormals  = encodeNormals(vsNormal, normal);
+    payload.materialID      = materialID;
+    payload.hitPosition     = worldPosition;
+    payload.uvs             = uv;
 }
