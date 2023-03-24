@@ -1,26 +1,13 @@
 #define HLSL
 #define PATHTRACE
 
-#include "ModelViewerRayTracing.h"
 #include "RayTracingHlslCompat.h"
+#include "ModelViewerRayTracing.h"
 
-cbuffer Material                                  : register(b3)
+cbuffer Material : register(b3)
 {
     uint MaterialID;
 }
-
-StructuredBuffer<RayTraceMeshInfo> g_meshInfo     : register(t1);
-ByteAddressBuffer                  g_indices      : register(t2);
-ByteAddressBuffer                  g_attributes   : register(t3);
-Texture2D<float>                   texShadow      : register(t4);
-Texture2D<float>                   texSSAO        : register(t5);
-SamplerState                       g_s0           : register(s0);
-SamplerComparisonState             shadowSampler  : register(s1);
-
-Texture2D<float4>                  g_localTexture : register(t6);
-Texture2D<float4>                  g_localNormal  : register(t7);
-
-Texture2D<float4>                  normals        : register(t13);
 
 [shader("raygeneration")]
 void RayGen()
@@ -33,12 +20,11 @@ void RayGen()
         direction,
         FLT_MAX };
     HitInfo payload;
-    TraceRay(g_accel, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, rayDesc, payload);
 
     float3 radiance = float3(0.0f, 0.0f, 0.0f);
     float3 throughput = float3(1.0f, 1.0f, 1.0f);
 
-    for (int bounce = 0; bounce < 1; bounce++)
+    for (int bounce = 0; bounce < 5; bounce++)
     {
         TraceRay(g_accel, RAY_FLAG_NONE, 0xFF, STANDARD_RAY_INDEX, 1, STANDARD_RAY_INDEX, rayDesc, payload);
 
@@ -58,12 +44,13 @@ void RayGen()
         if (dot(geometryNormal, V) < 0.0f) geometryNormal = -geometryNormal;
         if (dot(geometryNormal, shadingNormal) < 0.0f) shadingNormal = -shadingNormal;
 
-        radiance = throughput * shadingNormal;
+        float3 albedo = payload.Albedo;
+        float3 metallness = payload.Metallness;
 
-        // Load material values
+        radiance += albedo / 5.0f;
 
-        // Account for emissive surfaces
-        //radiance += throughput * material.emissive;
+        // Account for emissive surfaces (currently not supported)
+        // radiance += throughput * material.emissive;
 
         // Evaluate direct light (next event estimation), start by sampling one light 
         //Light light;
@@ -83,7 +70,7 @@ void RayGen()
         //        radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, material) * (getLightIntensityAtPoint(light, lightDistance) * lightWeight);
         //    }
         //}
-        
-        g_screenOutput[DispatchRaysIndex().xy] = float4(radiance, 1.0f);
     }
+
+    g_screenOutput[DispatchRaysIndex().xy] = float4(radiance, 1.0f);
 }

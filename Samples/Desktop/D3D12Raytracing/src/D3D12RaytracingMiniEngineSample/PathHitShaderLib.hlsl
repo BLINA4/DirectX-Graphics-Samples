@@ -1,77 +1,13 @@
 #define HLSL
 #define PATHTRACE
 
-#include "ModelViewerRayTracing.h"
 #include "RayTracingHlslCompat.h"
+#include "ModelViewerRayTracing.h"
 
-cbuffer Material                                  : register(b3)
+
+cbuffer Material : register(b3)
 {
     uint MaterialID;
-}
-
-StructuredBuffer<RayTraceMeshInfo> g_meshInfo     : register(t1); 
-ByteAddressBuffer                  g_indices      : register(t2);
-ByteAddressBuffer                  g_attributes   : register(t3);
-Texture2D<float>                   texShadow      : register(t4);
-Texture2D<float>                   texSSAO        : register(t5);
-SamplerState                       g_s0           : register(s0);
-SamplerComparisonState             shadowSampler  : register(s1);
-
-Texture2D<float4>                  g_localTexture : register(t6);
-Texture2D<float4>                  g_localNormal  : register(t7);
-
-Texture2D<float4>                  normals        : register(t13);
-
-uint3 Load3x16BitIndices( uint offsetBytes )
-{
-    const uint dwordAlignedOffset = offsetBytes & ~3;
-
-    const uint2 four16BitIndices = g_indices.Load2(dwordAlignedOffset);
-
-    uint3 indices;
-
-    if (dwordAlignedOffset == offsetBytes)
-    {
-        indices.x = four16BitIndices.x & 0xffff;
-        indices.y = (four16BitIndices.x >> 16) & 0xffff;
-        indices.z = four16BitIndices.y & 0xffff;
-    }
-    else
-    {
-        indices.x = (four16BitIndices.x >> 16) & 0xffff;
-        indices.y = four16BitIndices.y & 0xffff;
-        indices.z = (four16BitIndices.y >> 16) & 0xffff;
-    }
-
-    return indices;
-}
-
-float2 GetUVAttribute( uint byteOffset )
-{
-    return asfloat(g_attributes.Load2(byteOffset));
-}
-
-float3 RayPlaneIntersection(float3 planeOrigin, float3 planeNormal, float3 rayOrigin, float3 rayDirection)
-{
-    float t = dot(-planeNormal, rayOrigin - planeOrigin) / dot(planeNormal, rayDirection);
-    return rayOrigin + rayDirection * t;
-}
-
-float3 BarycentricCoordinates(float3 pt, float3 v0, float3 v1, float3 v2)
-{
-    float3 e0 = v1 - v0;
-    float3 e1 = v2 - v0;
-    float3 e2 = pt - v0;
-    float d00 = dot(e0, e0);
-    float d01 = dot(e0, e1);
-    float d11 = dot(e1, e1);
-    float d20 = dot(e2, e0);
-    float d21 = dot(e2, e1);
-    float denom = 1.0 / (d00 * d11 - d01 * d01);
-    float v = (d11 * d20 - d01 * d21) * denom;
-    float w = (d00 * d21 - d01 * d20) * denom;
-    float u = 1.0 - v - w;
-    return float3(u, v, w);
 }
 
 [shader("closesthit")]
@@ -148,13 +84,18 @@ void Hit( inout HitInfo payload, in BuiltInTriangleIntersectionAttributes attr )
 
     //---------------------------------------------------------------------------------------------
 
-    const float3 diffuseColor = g_localTexture.SampleGrad(g_s0, uv, ddxUV, ddyUV).rgb;
+    // Load material values
+    const float3 diffuseColor = g_localTexture.SampleGrad(g_s0, payload.uvs, ddxUV, ddyUV).rgb;
+    const float3 metallnessColor = g_localMetallness.SampleGrad(g_s0, payload.uvs, ddxUV, ddyUV).rgb;
     float3 normal = g_localNormal.SampleGrad(g_s0, uv, ddxUV, ddyUV).rgb * 2.0 - 1.0;
     float3x3 tbn = float3x3(vsTangent, vsBitangent, vsNormal);
     normal = normalize(mul(normal, tbn));
 
-    payload.encodedNormals  = encodeNormals(vsNormal, normal);
-    payload.materialID      = materialID;
-    payload.hitPosition     = worldPosition;
-    payload.uvs             = uv;
+    payload.Albedo                  = diffuseColor;
+    payload.Metallness              = metallnessColor;
+    payload.encodedNormals          = encodeNormals(vsNormal, normal);
+    payload.materialID              = materialID;
+    payload.triangleID              = triangleID;
+    payload.hitPosition             = worldPosition;
+    payload.uvs                     = uv;
 }

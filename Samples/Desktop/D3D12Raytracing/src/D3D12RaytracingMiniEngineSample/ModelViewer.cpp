@@ -432,6 +432,8 @@ static void InitializeViews( const ModelH3D& model )
             UINT slot;
             g_pRaytracingDescriptorHeap->AllocateDescriptor(srvHandle, slot);       // Diffuse
             Graphics::g_Device->CopyDescriptorsSimple(1, srvHandle, textures[0].GetSRV(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            g_pRaytracingDescriptorHeap->AllocateDescriptor(srvHandle, unused);     // Metallness
+            Graphics::g_Device->CopyDescriptorsSimple(1, srvHandle, textures[1].GetSRV(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
             g_pRaytracingDescriptorHeap->AllocateDescriptor(srvHandle, unused);     // Normal
             Graphics::g_Device->CopyDescriptorsSimple(1, srvHandle, textures[2].GetSRV(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
             
@@ -521,7 +523,7 @@ void InitializeRaytracingStateObjects(const ModelH3D &model, UINT numMeshes)
 
     D3D12_DESCRIPTOR_RANGE1 srvDescriptorRange = {};
     srvDescriptorRange.BaseShaderRegister = 12;
-    srvDescriptorRange.NumDescriptors = 2;
+    srvDescriptorRange.NumDescriptors = 4;
     srvDescriptorRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
     srvDescriptorRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
 
@@ -558,7 +560,7 @@ void InitializeRaytracingStateObjects(const ModelH3D &model, UINT numMeshes)
 
     D3D12_DESCRIPTOR_RANGE1 localTextureDescriptorRange = {};
     localTextureDescriptorRange.BaseShaderRegister = 6;
-    localTextureDescriptorRange.NumDescriptors = 2;
+    localTextureDescriptorRange.NumDescriptors = 4;
     localTextureDescriptorRange.RegisterSpace = 0;
     localTextureDescriptorRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
     localTextureDescriptorRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
@@ -594,7 +596,7 @@ void InitializeRaytracingStateObjects(const ModelH3D &model, UINT numMeshes)
     SetDxilLibrary(stateObjectDesc, g_pmissShaderLib, missExportName);
 
     auto shaderConfigStateObject = stateObjectDesc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-    shaderConfigStateObject->Config(64, 32);
+    shaderConfigStateObject->Config(128, 32);
 
     LPCWSTR hitGroupExportName = L"HitGroup";
     auto hitGroupSubobject = stateObjectDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();

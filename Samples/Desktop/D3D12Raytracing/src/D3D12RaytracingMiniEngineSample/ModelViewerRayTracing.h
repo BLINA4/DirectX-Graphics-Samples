@@ -35,10 +35,27 @@ struct RayPayload
 struct HitInfo
 {
     float4  encodedNormals;
+    float3  Albedo;
+    float3  Metallness;
     float3  hitPosition;
     uint    materialID;
+    uint    triangleID;
     float2  uvs;
 };
+
+StructuredBuffer<RayTraceMeshInfo> g_meshInfo           : register(t1);
+ByteAddressBuffer                  g_indices            : register(t2);
+ByteAddressBuffer                  g_attributes         : register(t3);
+Texture2D<float>                   texShadow            : register(t4);
+Texture2D<float>                   texSSAO              : register(t5);
+SamplerState                       g_s0                 : register(s0);
+SamplerComparisonState             shadowSampler        : register(s1);
+
+Texture2D<float4>                  g_localTexture       : register(t6);
+Texture2D<float4>                  g_localMetallness    : register(t7);
+Texture2D<float4>                  g_localNormal        : register(t8);
+
+Texture2D<float4>                  normals              : register(t13);
 
 #endif
 
@@ -78,6 +95,60 @@ cbuffer b1 : register(b1)
     DynamicCB g_dynamic;
 };
 
+#ifdef PATHTRACE
+
+inline uint3 Load3x16BitIndices(uint offsetBytes)
+{
+    const uint dwordAlignedOffset = offsetBytes & ~3;
+
+    const uint2 four16BitIndices = g_indices.Load2(dwordAlignedOffset);
+
+    uint3 indices;
+
+    if (dwordAlignedOffset == offsetBytes)
+    {
+        indices.x = four16BitIndices.x & 0xffff;
+        indices.y = (four16BitIndices.x >> 16) & 0xffff;
+        indices.z = four16BitIndices.y & 0xffff;
+    }
+    else
+    {
+        indices.x = (four16BitIndices.x >> 16) & 0xffff;
+        indices.y = four16BitIndices.y & 0xffff;
+        indices.z = (four16BitIndices.y >> 16) & 0xffff;
+    }
+
+    return indices;
+}
+
+inline float2 GetUVAttribute(uint byteOffset)
+{
+    return asfloat(g_attributes.Load2(byteOffset));
+}
+
+inline float3 RayPlaneIntersection(float3 planeOrigin, float3 planeNormal, float3 rayOrigin, float3 rayDirection)
+{
+    float t = dot(-planeNormal, rayOrigin - planeOrigin) / dot(planeNormal, rayDirection);
+    return rayOrigin + rayDirection * t;
+}
+
+inline float3 BarycentricCoordinates(float3 pt, float3 v0, float3 v1, float3 v2)
+{
+    float3 e0 = v1 - v0;
+    float3 e1 = v2 - v0;
+    float3 e2 = pt - v0;
+    float d00 = dot(e0, e0);
+    float d01 = dot(e0, e1);
+    float d11 = dot(e1, e1);
+    float d20 = dot(e2, e0);
+    float d21 = dot(e2, e1);
+    float denom = 1.0 / (d00 * d11 - d01 * d01);
+    float v = (d11 * d20 - d01 * d21) * denom;
+    float w = (d00 * d21 - d01 * d20) * denom;
+    float u = 1.0 - v - w;
+    return float3(u, v, w);
+}
+
 // Helpers for octahedron encoding of normals
 inline float2 octWrap(float2 v)
 {
@@ -108,6 +179,8 @@ inline void decodeNormals(float4 encodedNormals, out float3 geometryNormal, out 
     geometryNormal = decodeNormalOctahedron(encodedNormals.xy);
     shadingNormal = decodeNormalOctahedron(encodedNormals.zw);
 }
+
+#endif
 
 inline void GenerateCameraRay(uint2 index, out float3 origin, out float3 direction)
 {

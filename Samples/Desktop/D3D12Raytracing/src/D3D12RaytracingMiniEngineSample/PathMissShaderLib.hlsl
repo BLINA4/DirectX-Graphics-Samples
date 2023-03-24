@@ -1,6 +1,7 @@
 #define HLSL
 #define PATHTRACE
 
+#include "RayTracingHlslCompat.h"
 #include "ModelViewerRaytracing.h"
 
 [shader("miss")]
