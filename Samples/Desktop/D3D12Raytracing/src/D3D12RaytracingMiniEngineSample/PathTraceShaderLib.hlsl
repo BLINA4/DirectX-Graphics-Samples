@@ -21,10 +21,13 @@ void RayGen()
         FLT_MAX };
     HitInfo payload;
 
+    // Initialize random numbers generator
+    RngStateType rngState = initRNG(DispatchRaysIndex().xy, DispatchRaysDimensions().xy, g_dynamic.frameNumber);
+
     float3 radiance = float3(0.0f, 0.0f, 0.0f);
     float3 throughput = float3(1.0f, 1.0f, 1.0f);
 
-    for (int bounce = 0; bounce < 1; bounce++)
+    for (int bounce = 0; bounce < g_dynamic.recursionDepth; bounce++)
     {
         TraceRay(g_accel, RAY_FLAG_NONE, 0xFF, STANDARD_RAY_INDEX, 1, STANDARD_RAY_INDEX, rayDesc, payload);
 
@@ -52,11 +55,7 @@ void RayGen()
         // radiance += throughput * material.emissive;
 
         // Evaluate direct light (next event estimation), start by sampling one light 
-        Light sun;
-        sun.type = DIRECTIONAL_LIGHT;
-        sun.intensity = float3(0.7f, 0.7f, 0.7f);
-        sun.position = float3(300.0f, 1000.0f, 100.0f);
-        sun.pad = 0;
+        Light sun = g_dynamic.lights[0];
 
         float lightWeight = 1.0f;
         if (true /*sampleLightRIS(rngState, payload.hitPosition, geometryNormal, light, lightWeight)*/)
@@ -74,10 +73,57 @@ void RayGen()
                 radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, albedo, metallness, roughness)
                     * (getLightIntensityAtPoint(sun, lightDistance) * lightWeight);
             }
-
-            g_screenOutput[DispatchRaysIndex().xy] = float4(radiance, 1.0f);
         }
+
+        // Terminate loop early on last bounce (we don't need to sample BRDF)
+        if (bounce == g_dynamic.recursionDepth - 1) 
+            break;
+
+        // Russian Roulette
+        //if (bounce > MIN_BOUNCES) 
+        //{
+        //    float rrProbability = min(0.95f, luminance(throughput));
+        //    if (rrProbability < rand(rngState)) break;
+        //    else throughput /= rrProbability;
+        //}
+
+        // Sample BRDF to generate the next ray
+        // First, figure out whether to sample diffuse or specular BRDF
+        int brdfType;
+        if (metallness == 1.0f && roughness == 0.0f)
+        {
+            // Fast path for mirrors
+            brdfType = SPECULAR_TYPE;
+        }
+        else 
+        {
+            // Decide whether to sample diffuse or specular BRDF (based on Fresnel term)
+            float brdfProbability = getBrdfProbability(albedo, metallness, V, shadingNormal);
+
+            if (rand(rngState) < brdfProbability) 
+            {
+                brdfType = SPECULAR_TYPE;
+                throughput /= brdfProbability;
+            }
+            else 
+            {
+                brdfType = DIFFUSE_TYPE;
+                throughput /= (1.0f - brdfProbability);
+            }
+        }
+
+        // Run importance sampling of selected BRDF to generate reflecting ray direction
+        float3 brdfWeight;
+        float2 u = float2(rand(rngState), rand(rngState));
+        if (!evalIndirectCombinedBRDF(u, shadingNormal, geometryNormal, V, albedo,
+                                      metallness, roughness, brdfType, rayDesc.Direction, brdfWeight))
+            break; // Ray was eaten by the surface :(
+
+        // Account for surface properties using the BRDF "weight"
+        throughput *= brdfWeight;
+
+        rayDesc.Origin = offsetRay(payload.hitPosition, geometryNormal);
     }
 
-    //g_screenOutput[DispatchRaysIndex().xy] = float4(radiance, 1.0f);
+    g_screenOutput[DispatchRaysIndex().xy] = float4(radiance, 1.0f);
 }

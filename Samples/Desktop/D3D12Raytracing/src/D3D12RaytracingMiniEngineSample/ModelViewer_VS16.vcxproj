@@ -160,7 +160,6 @@
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Profile|x64'"> -HV 2017 -Zpr </AdditionalOptions>
       <AdditionalOptions Condition="'$(Configuration)'=='Debug'">-Zi -Qembed_debug %(AdditionalOptions)</AdditionalOptions>
     </FxCompile>
-    <FxCompile Include="PathMissShaderLib.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DXSampleHelper.h" />

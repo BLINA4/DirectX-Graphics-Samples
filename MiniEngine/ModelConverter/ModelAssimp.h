@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "ModelH3D.h"
+#include "../Model/ModelH3D.h"
 
 class AssimpModel : public ModelH3D
 {

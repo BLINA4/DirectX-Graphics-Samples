@@ -1339,6 +1339,9 @@ void D3D12RaytracingMiniEngineSample::Pathtrace(
 {
     ScopedTimer _p0(L"Pathtracing", context);
 
+    double TimeInSecs = 
+        SystemTime::TicksToSeconds(SystemTime::GetCurrentTick());
+
     // Prepare constants
     DynamicCB inputs = g_dynamicCb;
     auto m0 = camera.GetViewProjMatrix();
@@ -1347,6 +1350,14 @@ void D3D12RaytracingMiniEngineSample::Pathtrace(
     memcpy(&inputs.worldCameraPosition, &camera.GetPosition(), sizeof(inputs.worldCameraPosition));
     inputs.resolution.x = (float)colorTarget.GetWidth();
     inputs.resolution.y = (float)colorTarget.GetHeight();
+    inputs.recursionDepth = 3;
+    Vector3 intensity = Vector3(1.0f, 1.0f, 1.0f) * Sponza::m_SunLightIntensity;
+    OrthogonalTransform rotateY;
+    Vector3 direction = rotateY.MakeYRotation(PI / 4 * TimeInSecs) * Sponza::m_SunDirection;
+    memcpy(&inputs.lights[0].intensity, &intensity, sizeof(Vector3));
+    memcpy(&inputs.lights[0].position,  &direction, sizeof(Vector3));
+    inputs.lights[0].type = DIRECTIONAL_LIGHT;
+    inputs.frameNumber = Graphics::GetFrameCount();
 
     HitShaderConstants hitShaderConstants = {};
     hitShaderConstants.sunDirection = Sponza::m_SunDirection;

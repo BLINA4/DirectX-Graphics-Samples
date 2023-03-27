@@ -27,6 +27,7 @@
 
 // From Model
 #include "ModelH3D.h"
+#include "ModelLoader.h"
 
 // From ModelViewer
 #include "LightManager.h"
@@ -127,6 +128,8 @@ void Sponza::Startup( Camera& Camera )
     m_CutoutModelPSO = m_ModelPSO;
     m_CutoutModelPSO.SetRasterizerState(RasterizerTwoSided);
     m_CutoutModelPSO.Finalize();
+
+    //std::shared_ptr<Model>model = Renderer::LoadModel(L"Sponza/pbr/sponza2.gltf");
 
     ASSERT(m_Model.Load(L"Sponza/pbr/sponza.h3d"), "Failed to load model");
     ASSERT(m_Model.GetMeshCount() > 0, "Model contains no meshes");
