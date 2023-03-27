@@ -107,7 +107,8 @@ struct DynamicCB
     Light    lights[4];
     uint     recursionDepth;
     uint     frameNumber;
-    float2   padding2;
+    uint     accumulateNumber;
+    float    padding2;
 };
 
 #ifdef HLSL
@@ -118,6 +119,7 @@ static const float FLT_MAX = asfloat(0x7F7FFFFF);
 RaytracingAccelerationStructure g_accel : register(t0);
 
 RWTexture2D<float4> g_screenOutput : register(u2);
+RWTexture2D<float4> g_screenAccum  : register(u3);
 
 cbuffer HitShaderConstants : register(b0)
 {

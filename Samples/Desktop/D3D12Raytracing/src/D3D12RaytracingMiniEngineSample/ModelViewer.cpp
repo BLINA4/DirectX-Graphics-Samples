@@ -79,6 +79,7 @@ D3D12_GPU_DESCRIPTOR_HANDLE g_GpuSceneMaterialSrvs[27];
 D3D12_CPU_DESCRIPTOR_HANDLE g_SceneMeshInfo;
 
 D3D12_GPU_DESCRIPTOR_HANDLE g_OutputUAV;
+D3D12_GPU_DESCRIPTOR_HANDLE g_AccumUAV;
 D3D12_GPU_DESCRIPTOR_HANDLE g_DepthAndNormalsTable;
 D3D12_GPU_DESCRIPTOR_HANDLE g_SceneSrvs;
 
@@ -213,7 +214,8 @@ private:
 
     CameraPosition m_CameraPosArray[c_NumCameraPositions];
     UINT m_CameraPosArrayCurrentPosition;
-
+    bool isLightsAnimate = true;
+    UINT NumOfStaticFrames = 1;
 };
 
 
@@ -389,9 +391,14 @@ static void InitializeViews( const ModelH3D& model )
 {
     D3D12_CPU_DESCRIPTOR_HANDLE uavHandle;
     UINT uavDescriptorIndex;
+
     g_pRaytracingDescriptorHeap->AllocateDescriptor(uavHandle, uavDescriptorIndex);
     Graphics::g_Device->CopyDescriptorsSimple(1, uavHandle, g_SceneColorBuffer.GetUAV(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     g_OutputUAV = g_pRaytracingDescriptorHeap->GetGpuHandle(uavDescriptorIndex);
+
+    g_pRaytracingDescriptorHeap->AllocateDescriptor(uavHandle, uavDescriptorIndex);
+    Graphics::g_Device->CopyDescriptorsSimple(1, uavHandle, g_SceneAccumBuffer.GetUAV(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    g_AccumUAV = g_pRaytracingDescriptorHeap->GetGpuHandle(uavDescriptorIndex);
 
     {
         D3D12_CPU_DESCRIPTOR_HANDLE srvHandle;
@@ -960,7 +967,7 @@ void D3D12RaytracingMiniEngineSample::Update( float deltaT )
     else if (GameInput::IsFirstPressed(GameInput::kKey_7))
         rayTracingMode = RTM_REFLECTIONS;
     else if (GameInput::IsFirstPressed(GameInput::kKey_8))
-        rayTracingMode = RTM_PATHTRACE;
+        rayTracingMode = RTM_PATHTRACE, NumOfStaticFrames = 1;
     
     static bool freezeCamera = false;
     
@@ -969,15 +976,20 @@ void D3D12RaytracingMiniEngineSample::Update( float deltaT )
         freezeCamera = !freezeCamera;
     }
 
+    if (GameInput::IsFirstPressed(GameInput::kKey_space))
+    {
+        isLightsAnimate = !isLightsAnimate;
+    }
+
     if (GameInput::IsFirstPressed(GameInput::kKey_left))
     {
         m_CameraPosArrayCurrentPosition = (m_CameraPosArrayCurrentPosition + c_NumCameraPositions - 1) % c_NumCameraPositions;
-        SetCameraToPredefinedPosition(m_CameraPosArrayCurrentPosition);
+        SetCameraToPredefinedPosition(m_CameraPosArrayCurrentPosition);;
     }
     else if (GameInput::IsFirstPressed(GameInput::kKey_right))
     {
         m_CameraPosArrayCurrentPosition = (m_CameraPosArrayCurrentPosition + 1) % c_NumCameraPositions;
-        SetCameraToPredefinedPosition(m_CameraPosArrayCurrentPosition);
+        SetCameraToPredefinedPosition(m_CameraPosArrayCurrentPosition);;
     }
 
     if (!freezeCamera) 
@@ -1339,25 +1351,43 @@ void D3D12RaytracingMiniEngineSample::Pathtrace(
 {
     ScopedTimer _p0(L"Pathtracing", context);
 
-    double TimeInSecs = 
-        SystemTime::TicksToSeconds(SystemTime::GetCurrentTick());
+    double TimeInSecs = SystemTime::TicksToSeconds(SystemTime::GetCurrentTick());;
+    static double RotationalTime, DifferenceTime;
+
+    static Matrix4 prev;
+    auto m0 = camera.GetViewProjMatrix();
+    auto m1 = Transpose(Invert(m0));
+
+    if (memcmp(&m0, &prev, sizeof(Matrix4)))
+        NumOfStaticFrames = 1;
+
+    prev = m0;
+
+    if (isLightsAnimate)
+    {
+        RotationalTime = TimeInSecs - DifferenceTime;
+        NumOfStaticFrames = 1;
+    }
+    else
+    {
+        DifferenceTime = TimeInSecs - RotationalTime;
+    }
 
     // Prepare constants
     DynamicCB inputs = g_dynamicCb;
-    auto m0 = camera.GetViewProjMatrix();
-    auto m1 = Transpose(Invert(m0));
     memcpy(&inputs.cameraToWorld, &m1, sizeof(inputs.cameraToWorld));
     memcpy(&inputs.worldCameraPosition, &camera.GetPosition(), sizeof(inputs.worldCameraPosition));
     inputs.resolution.x = (float)colorTarget.GetWidth();
     inputs.resolution.y = (float)colorTarget.GetHeight();
-    inputs.recursionDepth = 3;
+    inputs.recursionDepth = 5;
     Vector3 intensity = Vector3(1.0f, 1.0f, 1.0f) * Sponza::m_SunLightIntensity;
     OrthogonalTransform rotateY;
-    Vector3 direction = rotateY.MakeYRotation(PI / 4 * TimeInSecs) * Sponza::m_SunDirection;
+    Vector3 direction = rotateY.MakeYRotation(PI / 4 * RotationalTime) * Sponza::m_SunDirection;
     memcpy(&inputs.lights[0].intensity, &intensity, sizeof(Vector3));
     memcpy(&inputs.lights[0].position,  &direction, sizeof(Vector3));
     inputs.lights[0].type = DIRECTIONAL_LIGHT;
     inputs.frameNumber = Graphics::GetFrameCount();
+    inputs.accumulateNumber = NumOfStaticFrames++;
 
     HitShaderConstants hitShaderConstants = {};
     hitShaderConstants.sunDirection = Sponza::m_SunDirection;
@@ -1375,6 +1405,7 @@ void D3D12RaytracingMiniEngineSample::Pathtrace(
     context.TransitionResource(g_hitConstantBuffer, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
     context.TransitionResource(g_ShadowBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     context.TransitionResource(colorTarget, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    context.TransitionResource(g_SceneAccumBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     context.FlushResourceBarriers();
 
     ID3D12GraphicsCommandList* pCommandList = context.GetCommandList();
@@ -1389,6 +1420,7 @@ void D3D12RaytracingMiniEngineSample::Pathtrace(
     pCommandList->SetComputeRootDescriptorTable(0, g_SceneSrvs);
     pCommandList->SetComputeRootConstantBufferView(1, g_hitConstantBuffer.GetGpuVirtualAddress());
     pCommandList->SetComputeRootConstantBufferView(2, g_dynamicConstantBuffer.GetGpuVirtualAddress());
+    pCommandList->SetComputeRootDescriptorTable(4, g_AccumUAV);
     pCommandList->SetComputeRootDescriptorTable(4, g_OutputUAV);
     pPathtracingCommandList->SetComputeRootShaderResourceView(7, g_bvh_topLevelAccelerationStructure->GetGPUVirtualAddress());
 
@@ -1412,6 +1444,8 @@ void D3D12RaytracingMiniEngineSample::RenderUI(class GraphicsContext& gfxContext
     TextContext text(gfxContext);
     text.Begin();
     text.DrawFormattedString("\nMillion Primary Rays/s: %7.3f", primaryRaysPerSec);
+    if (rayTracingMode == RTM_PATHTRACE)
+        text.DrawFormattedString("\nNumber of frames accumulated: %i", NumOfStaticFrames - 1);
     text.End();
 }
 

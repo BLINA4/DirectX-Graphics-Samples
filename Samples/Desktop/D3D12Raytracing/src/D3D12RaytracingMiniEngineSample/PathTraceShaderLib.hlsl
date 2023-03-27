@@ -16,7 +16,7 @@ void RayGen()
     GenerateCameraRay(DispatchRaysIndex().xy, origin, direction);
 
     RayDesc rayDesc = { origin,
-        0.0f,
+        0.01f,
         direction,
         FLT_MAX };
     HitInfo payload;
@@ -125,5 +125,10 @@ void RayGen()
         rayDesc.Origin = offsetRay(payload.hitPosition, geometryNormal);
     }
 
-    g_screenOutput[DispatchRaysIndex().xy] = float4(radiance, 1.0f);
+    // Temporal accumulation
+    float4 prev = g_screenAccum[DispatchRaysIndex().xy] * (g_dynamic.accumulateNumber - 1);
+    float4 accumulatedColor = (prev + float4(radiance, 1.0f)) / g_dynamic.accumulateNumber;
+    g_screenAccum[DispatchRaysIndex().xy] = accumulatedColor;
+
+    g_screenOutput[DispatchRaysIndex().xy] = float4(accumulatedColor.xyz, 1.0f);
 }
