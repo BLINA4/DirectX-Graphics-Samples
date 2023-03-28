@@ -101,8 +101,7 @@ enum RaytracingTypes
     NumTypes
 };
 
-const static UINT MaxRayRecursion = 3;
-
+static UINT MaxRayRecursion = 3;
 const static UINT c_NumCameraPositions = 5;
 
 struct RaytracingDispatchRayInputs
@@ -992,6 +991,18 @@ void D3D12RaytracingMiniEngineSample::Update( float deltaT )
         SetCameraToPredefinedPosition(m_CameraPosArrayCurrentPosition);;
     }
 
+    if (GameInput::IsFirstPressed(GameInput::kKey_up))
+    {
+        MaxRayRecursion++;
+        NumOfStaticFrames = 1;
+    }
+    else if (GameInput::IsFirstPressed(GameInput::kKey_down) &&
+             MaxRayRecursion > 1)
+    {
+        MaxRayRecursion--;
+        NumOfStaticFrames = 1;
+    }
+
     if (!freezeCamera) 
     {
         m_CameraController->Update(deltaT);
@@ -1379,7 +1390,7 @@ void D3D12RaytracingMiniEngineSample::Pathtrace(
     memcpy(&inputs.worldCameraPosition, &camera.GetPosition(), sizeof(inputs.worldCameraPosition));
     inputs.resolution.x = (float)colorTarget.GetWidth();
     inputs.resolution.y = (float)colorTarget.GetHeight();
-    inputs.recursionDepth = 5;
+    inputs.recursionDepth = MaxRayRecursion;
     Vector3 intensity = Vector3(1.0f, 1.0f, 1.0f) * Sponza::m_SunLightIntensity;
     OrthogonalTransform rotateY;
     Vector3 direction = rotateY.MakeYRotation(PI / 4 * RotationalTime) * Sponza::m_SunDirection;
@@ -1445,7 +1456,10 @@ void D3D12RaytracingMiniEngineSample::RenderUI(class GraphicsContext& gfxContext
     text.Begin();
     text.DrawFormattedString("\nMillion Primary Rays/s: %7.3f", primaryRaysPerSec);
     if (rayTracingMode == RTM_PATHTRACE)
+    {
         text.DrawFormattedString("\nNumber of frames accumulated: %i", NumOfStaticFrames - 1);
+        text.DrawFormattedString("\nMaximum depth of bounces: %i", MaxRayRecursion);
+    }
     text.End();
 }
 
