@@ -375,7 +375,7 @@ static void InitializeSceneInfo( const ModelH3D& model )
         meshInfoData[i].m_bitangentAttributeOffsetBytes = model.m_pMesh[i].vertexDataByteOffset + model.m_pMesh[i].attrib[ModelH3D::attrib_bitangent].offset;
         meshInfoData[i].m_attributeStrideBytes = model.m_pMesh[i].vertexStride;
         meshInfoData[i].m_materialInstanceId = model.m_pMesh[i].materialIndex;
-        ASSERT(meshInfoData[i].m_materialInstanceId < 27);
+        ASSERT(meshInfoData[i].m_materialInstanceId < 25);
     }
 
     g_hitShaderMeshInfoBuffer.Create(L"RayTraceMeshInfo",

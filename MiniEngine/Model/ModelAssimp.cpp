@@ -14,6 +14,7 @@
 #include "ModelAssimp.h"
 
 #include "../Model/ModelLoader.h"
+#include "TextureConvert.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -61,8 +62,8 @@ bool AssimpModel::Load(const string& filename)
 	if (!rval)
 		return false;
 
-	if (needToOptimize)
-		Optimize();
+	//if (needToOptimize)
+	//	Optimize();
 
 	return true;
 }
@@ -166,10 +167,10 @@ bool AssimpModel::LoadAssimp(const string& filename)
         srcMat->Get(AI_MATKEY_SHININESS, shininess);
         srcMat->Get(AI_MATKEY_SHININESS_STRENGTH, specularStrength);
         srcMat->Get(AI_MATKEY_TEXTURE(aiTextureType_DIFFUSE, 0), texDiffusePath);
-        srcMat->Get(AI_MATKEY_TEXTURE(aiTextureType_SPECULAR, 0), texSpecularPath);
+        srcMat->Get(AI_MATKEY_TEXTURE(aiTextureType_METALNESS, 0), texSpecularPath);
         srcMat->Get(AI_MATKEY_TEXTURE(aiTextureType_EMISSIVE, 0), texEmissivePath);
         //srcMat->Get(AI_MATKEY_TEXTURE(aiTextureType_NORMALS, 0), texNormalPath);
-        srcMat->Get(AI_MATKEY_TEXTURE(aiTextureType_AMBIENT, 0), texNormalPath);
+        srcMat->Get(AI_MATKEY_TEXTURE(aiTextureType_NORMALS, 0), texNormalPath);
         srcMat->Get(AI_MATKEY_TEXTURE(aiTextureType_LIGHTMAP, 0), texLightmapPath);
         srcMat->Get(AI_MATKEY_TEXTURE(aiTextureType_REFLECTION, 0), texReflectionPath);
 
@@ -380,6 +381,8 @@ bool AssimpModel::LoadAssimp(const string& filename)
             *dstIndexDepth++ = srcMesh->mFaces[f].mIndices[2];
         }
     }
+
+    LoadTextures(L"glTF-Sponza/");
 
     ComputeAllBoundingBoxes();
 

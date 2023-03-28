@@ -28,6 +28,7 @@
 // From Model
 #include "ModelH3D.h"
 #include "ModelLoader.h"
+#include "ModelAssimp.h"
 
 // From ModelViewer
 #include "LightManager.h"
@@ -54,7 +55,7 @@ namespace Sponza
     GraphicsPSO m_ShadowPSO(L"Sponza: Shadow PSO");
     GraphicsPSO m_CutoutShadowPSO(L"Sponza: Cutout Shadow PSO");
 
-    ModelH3D m_Model;
+    AssimpModel m_Model;
     std::vector<bool> m_pMaterialIsCutout;
 
     Vector3 m_SunDirection;
@@ -129,9 +130,11 @@ void Sponza::Startup( Camera& Camera )
     m_CutoutModelPSO.SetRasterizerState(RasterizerTwoSided);
     m_CutoutModelPSO.Finalize();
 
-    //std::shared_ptr<Model>model = Renderer::LoadModel(L"Sponza/pbr/sponza2.gltf");
+    m_Model.Load("gltf-Sponza/Sponza.gltf");
+    m_Model.SaveH3D(L"gltf-Sponza/Sponza.h3d");
 
-    ASSERT(m_Model.Load(L"Sponza/pbr/sponza.h3d"), "Failed to load model");
+    //ASSERT(m_Model.Load("Sponza/pbr/sponza.h3d"), "Failed to load model");
+    ASSERT(m_Model.LoadH3D(L"gltf-Sponza/Sponza.h3d"), "Failed to load model");
     ASSERT(m_Model.GetMeshCount() > 0, "Model contains no meshes");
 
     // The caller of this function can override which materials are considered cutouts

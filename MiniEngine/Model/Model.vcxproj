@@ -67,6 +67,7 @@
     <ClInclude Include="LightManager.h" />
     <ClInclude Include="MeshConvert.h" />
     <ClInclude Include="Model.h" />
+    <ClInclude Include="ModelAssimp.h" />
     <ClInclude Include="ModelLoader.h" />
     <ClInclude Include="ModelH3D.h" />
     <ClInclude Include="ParticleEffects.h" />
@@ -82,6 +83,7 @@
     <ClCompile Include="LightManager.cpp" />
     <ClCompile Include="MeshConvert.cpp" />
     <ClCompile Include="Model.cpp" />
+    <ClCompile Include="ModelAssimp.cpp" />
     <ClCompile Include="ModelConvert.cpp" />
     <ClCompile Include="ModelH3D.cpp" />
     <ClCompile Include="ModelLoader.cpp" />
