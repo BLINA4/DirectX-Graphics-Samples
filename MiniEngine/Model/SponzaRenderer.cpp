@@ -130,8 +130,8 @@ void Sponza::Startup( Camera& Camera )
     m_CutoutModelPSO.SetRasterizerState(RasterizerTwoSided);
     m_CutoutModelPSO.Finalize();
 
-    m_Model.Load("gltf-Sponza/Sponza.gltf");
-    m_Model.SaveH3D(L"gltf-Sponza/Sponza.h3d");
+    //m_Model.Load("gltf-Sponza/Sponza.gltf");
+    //m_Model.SaveH3D(L"gltf-Sponza/Sponza.h3d");
 
     //ASSERT(m_Model.Load("Sponza/pbr/sponza.h3d"), "Failed to load model");
     ASSERT(m_Model.LoadH3D(L"gltf-Sponza/Sponza.h3d"), "Failed to load model");
