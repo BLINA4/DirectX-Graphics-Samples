@@ -1391,12 +1391,18 @@ void D3D12RaytracingMiniEngineSample::Pathtrace(
     inputs.resolution.x = (float)colorTarget.GetWidth();
     inputs.resolution.y = (float)colorTarget.GetHeight();
     inputs.recursionDepth = MaxRayRecursion;
-    Vector3 intensity = Vector3(1.0f, 1.0f, 1.0f) * Sponza::m_SunLightIntensity;
+    
+    Vector3 intensity = Vector3(0.992f, 0.984f, 0.828f) * Sponza::m_SunLightIntensity;
     OrthogonalTransform rotateY;
-    Vector3 direction = rotateY.MakeYRotation(PI / 4 * RotationalTime) * Sponza::m_SunDirection;
+    Vector3 direction = rotateY.MakeYRotation(PI / 4 * RotationalTime) * Sponza::m_SunDirection * Vector3(1.0f, 0.8f, 1.0f);
     memcpy(&inputs.lights[0].intensity, &intensity, sizeof(Vector3));
     memcpy(&inputs.lights[0].position,  &direction, sizeof(Vector3));
     inputs.lights[0].type = DIRECTIONAL_LIGHT;
+
+    inputs.lights[1].intensity = XMFLOAT3(80000.0f, 80000.0f, 80000.0f);
+    inputs.lights[1].position = XMFLOAT3(0.0f, 200.0f, 0.0f);
+    inputs.lights[1].type = POINT_LIGHT;
+
     inputs.frameNumber = Graphics::GetFrameCount();
     inputs.accumulateNumber = NumOfStaticFrames++;
 

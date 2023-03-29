@@ -133,8 +133,8 @@ void Sponza::Startup( Camera& Camera )
     //m_Model.Load("gltf-Sponza/Sponza.gltf");
     //m_Model.SaveH3D(L"gltf-Sponza/Sponza.h3d");
 
-    //ASSERT(m_Model.Load("Sponza/pbr/sponza.h3d"), "Failed to load model");
-    ASSERT(m_Model.LoadH3D(L"gltf-Sponza/Sponza.h3d"), "Failed to load model");
+    ASSERT(m_Model.Load("glTF-Sponza/Sponza.h3d"), "Failed to load model");
+    //ASSERT(m_Model.LoadH3D(L"Spheres/MetalRoughSpheres.h3d"), "Failed to load model");
     ASSERT(m_Model.GetMeshCount() > 0, "Model contains no meshes");
 
     // The caller of this function can override which materials are considered cutouts

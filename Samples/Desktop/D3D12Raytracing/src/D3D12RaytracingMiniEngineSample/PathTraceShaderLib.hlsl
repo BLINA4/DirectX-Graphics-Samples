@@ -16,7 +16,7 @@ void RayGen()
     GenerateCameraRay(DispatchRaysIndex().xy, origin, direction);
 
     RayDesc rayDesc = { origin,
-        0.01f,
+        0.05f,
         direction,
         FLT_MAX };
     HitInfo payload;
@@ -56,6 +56,7 @@ void RayGen()
 
         // Evaluate direct light (next event estimation), start by sampling one light 
         Light sun = g_dynamic.lights[0];
+        Light pl = g_dynamic.lights[1];
 
         float lightWeight = 1.0f;
         if (true /*sampleLightRIS(rngState, payload.hitPosition, geometryNormal, light, lightWeight)*/)
@@ -73,6 +74,22 @@ void RayGen()
                 radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, albedo, metallness, roughness)
                     * (getLightIntensityAtPoint(sun, lightDistance) * lightWeight);
             }
+
+            //if (length(radiance) > length(float3(1.0f, 1.0f, 1.0f)))
+            //    g_screenOutput[DispatchRaysIndex().xy] = float4(1.0f, 0.0f, 1.0f, 1.0f);
+            //else
+            //    g_screenOutput[DispatchRaysIndex().xy] = float4(radiance, 1.0f);
+
+            getLightData(pl, payload.hitPosition, lightVector, lightDistance);
+            L = normalize(lightVector);
+
+            // Cast shadow ray towards the selected light
+            if (castShadowRay(payload.hitPosition, geometryNormal, L, lightDistance))
+            {
+                // If light is not in shadow, evaluate BRDF and accumulate its contribution into radiance
+                radiance += throughput * evalCombinedBRDF(shadingNormal, L, V, albedo, metallness, roughness)
+                    * (getLightIntensityAtPoint(pl, lightDistance) * lightWeight);
+            }
         }
 
         // Terminate loop early on last bounce (we don't need to sample BRDF)
@@ -80,7 +97,7 @@ void RayGen()
             break;
 
         // Russian Roulette
-        //if (bounce > MIN_BOUNCES) 
+        //if (bounce > 2) 
         //{
         //    float rrProbability = min(0.95f, luminance(throughput));
         //    if (rrProbability < rand(rngState)) break;
@@ -98,7 +115,7 @@ void RayGen()
         else 
         {
             // Decide whether to sample diffuse or specular BRDF (based on Fresnel term)
-            float brdfProbability = getBrdfProbability(albedo, metallness, V, shadingNormal);
+            float brdfProbability = getBrdfProbability(albedo, metallness, roughness, V, shadingNormal);
 
             if (rand(rngState) < brdfProbability) 
             {
@@ -124,6 +141,9 @@ void RayGen()
 
         rayDesc.Origin = offsetRay(payload.hitPosition, geometryNormal);
     }
+
+    //if (length(throughput) > length(float3(1.0f, 1.0f, 1.0f)))
+    //    g_screenOutput[DispatchRaysIndex().xy] = float4(1.0f, 0.0f, 1.0f, 1.0f);
 
     // Temporal accumulation
     float4 prev = g_screenAccum[DispatchRaysIndex().xy] * (g_dynamic.accumulateNumber - 1);

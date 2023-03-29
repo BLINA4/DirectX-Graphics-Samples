@@ -382,7 +382,7 @@ bool AssimpModel::LoadAssimp(const string& filename)
         }
     }
 
-    LoadTextures(L"glTF-Sponza/");
+    LoadTextures(L"Spheres/");
 
     ComputeAllBoundingBoxes();
 

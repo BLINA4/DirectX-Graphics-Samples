@@ -223,6 +223,7 @@
       <Filter>Shaders</Filter>
     </ClInclude>
     <ClInclude Include="DXSampleHelper.h" />
+    <ClInclude Include="brdf.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Textures\Models\background.DDS">

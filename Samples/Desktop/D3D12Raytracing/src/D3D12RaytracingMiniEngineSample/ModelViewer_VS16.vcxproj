@@ -162,6 +162,7 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="brdf.h" />
     <ClInclude Include="DXSampleHelper.h" />
     <ClInclude Include="ModelViewerRayTracing.h" />
     <ClInclude Include="RayTracingHlslCompat.h" />

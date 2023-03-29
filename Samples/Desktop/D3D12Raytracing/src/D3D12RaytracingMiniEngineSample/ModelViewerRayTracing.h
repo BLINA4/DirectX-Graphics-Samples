@@ -108,7 +108,7 @@ struct DynamicCB
     uint     recursionDepth;
     uint     frameNumber;
     uint     accumulateNumber;
-    float    padding2;
+    uint     lightsNumber;
 };
 
 #ifdef HLSL
@@ -324,6 +324,7 @@ inline float3 getLightIntensityAtPoint(Light light, float distance)
     }
 }
 
+
 inline float3 offsetRay(const float3 p, const float3 n)
 {
     static const float origin = 1.0f / 32.0f;
@@ -342,12 +343,14 @@ inline float3 offsetRay(const float3 p, const float3 n)
         abs(p.z) < origin ? p.z + float_scale * n.z : p_i.z);
 }
 
+#include "brdf.h"
+
 bool castShadowRay(float3 hitPosition, float3 surfaceNormal, float3 directionToLight, float TMax)
 {
     RayDesc ray;
     ray.Origin = offsetRay(hitPosition, surfaceNormal);
     ray.Direction = directionToLight;
-    ray.TMin = 0.01f;
+    ray.TMin = 0.05f;
     ray.TMax = TMax;
 
     HitInfo payload;
@@ -367,339 +370,64 @@ bool castShadowRay(float3 hitPosition, float3 surfaceNormal, float3 directionToL
     return payload.materialID == INVALID_ID;
 }
 
-inline float4 getRotationToZAxis(float3 input)
-{
+// Samples a random light from the pool of all lights using simplest uniform distirbution
+bool sampleLightUniform(inout RngStateType rngState, float3 hitPosition, float3 surfaceNormal, out Light light, out float lightSampleWeight) {
 
-    // Handle special case when input is exact or near opposite of (0, 0, 1)
-    if (input.z < -0.99999f) return float4(1.0f, 0.0f, 0.0f, 0.0f);
+    if (g_dynamic.lightsNumber == 0) return false;
 
-    return normalize(float4(input.y, -input.x, 0.0f, 1.0f + input.z));
-}
+    uint randomLightIndex = min(g_dynamic.lightsNumber - 1, uint(rand(rngState) * g_dynamic.lightsNumber));
+    light = g_dynamic.lights[randomLightIndex];
 
-inline float4 getRotationFromZAxis(float3 input) 
-{
-    // Handle special case when input is exact or near opposite of (0, 0, 1)
-    if (input.z < -0.99999f) return float4(1.0f, 0.0f, 0.0f, 0.0f);
-
-    return normalize(float4(-input.y, input.x, 0.0f, 1.0f + input.z));
-}
-
-inline float4 invertRotation(float4 q)
-{
-    return float4(-q.x, -q.y, -q.z, q.w);
-}
-
-inline float3 rotatePoint(float4 q, float3 v) 
-{
-    const float3 qAxis = float3(q.x, q.y, q.z);
-    return 2.0f * dot(qAxis, v) * qAxis + (q.w * q.w - dot(qAxis, qAxis)) * v + 2.0f * q.w * cross(qAxis, v);
-}
-
-inline float3 sampleHemisphere(float2 u, OUT_PARAMETER(float) pdf) 
-{
-    float a = sqrt(u.x);
-    float b = 2 * PI * u.y;
-
-    float3 result = float3(
-        a * cos(b),
-        a * sin(b),
-        sqrt(1.0f - u.x));
-
-    pdf = result.z / PI;
-
-    return result;
-}
-
-inline float3 sampleHemisphere(float2 u) 
-{
-    float pdf;
-    return sampleHemisphere(u, pdf);
-}
-
-// Data needed to evaluate BRDF (surface and material properties at given point + configuration of light and normal vectors)
-struct BrdfData
-{
-    // Material properties
-    float3 specularF0;
-    float3 diffuseReflectance;
-
-    // Roughnesses
-    float roughness;    //< perceptively linear roughness (artist's input)
-    float alpha;        //< linear roughness - often 'alpha' in specular BRDF equations
-    float alphaSquared; //< alpha squared - pre-calculated value commonly used in BRDF equations
-
-    // Commonly used terms for BRDF evaluation
-    float3 F; //< Fresnel term
-
-    // Vectors
-    float3 V; //< Direction to viewer (or opposite direction of incident ray)
-    float3 N; //< Shading normal
-    float3 H; //< Half vector (microfacet normal)
-    float3 L; //< Direction to light (or direction of reflecting ray)
-
-    float NdotL;
-    float NdotV;
-
-    float LdotH;
-    float NdotH;
-    float VdotH;
-
-    // True when V/L is backfacing wrt. shading normal N
-    bool Vbackfacing;
-    bool Lbackfacing;
-};
-
-inline float3 baseColorToSpecularF0(float3 baseColor, float metalness) 
-{
-    return lerp(float3(0.04f, 0.04f, 0.04f), baseColor, metalness);
-}
-
-inline float3 baseColorToDiffuseReflectance(float3 baseColor, float metalness)
-{
-    return baseColor * (1.0f - metalness);
-}
-
-inline float luminance(float3 rgb)
-{
-    return dot(rgb, float3(0.2126f, 0.7152f, 0.0722f));
-}
-
-inline float shadowedF90(float3 F0) 
-{
-    const float t = (1.0f / 0.04f);
-    return min(1.0f, t * luminance(F0));
-}
-
-inline float3 evalFresnelSchlick(float3 f0, float f90, float NdotS)
-{
-    return f0 + (f90 - f0) * pow(1.0f - NdotS, 5.0f);
-}
-
-inline float3 evalFresnel(float3 f0, float f90, float NdotS)
-{
-    // Default is Schlick's approximation
-    return evalFresnelSchlick(f0, f90, NdotS);
-}
-
-inline float GGX_D(float alphaSquared, float NdotH) 
-{
-    float b = ((alphaSquared - 1.0f) * NdotH * NdotH + 1.0f);
-    return alphaSquared / (PI * b * b);
-}
-
-inline float Smith_G1_GGX(float alpha, float NdotS, float alphaSquared, float NdotSSquared) 
-{
-    return 2.0f / (sqrt(((alphaSquared * (1.0f - NdotSSquared)) + NdotSSquared) / NdotSSquared) + 1.0f);
-}
-
-inline float Smith_G2_Over_G1_Height_Correlated(float alpha, float alphaSquared, float NdotL, float NdotV)
-{
-    float G1V = Smith_G1_GGX(alpha, NdotV, alphaSquared, NdotV * NdotV);
-    float G1L = Smith_G1_GGX(alpha, NdotL, alphaSquared, NdotL * NdotL);
-    return G1L / (G1V + G1L - G1V * G1L);
-}
-
-inline float Smith_G2_Height_Correlated_GGX_Lagarde(float alphaSquared, float NdotL, float NdotV)
-{
-    float a = NdotV * sqrt(alphaSquared + NdotL * (NdotL - alphaSquared * NdotL));
-    float b = NdotL * sqrt(alphaSquared + NdotV * (NdotV - alphaSquared * NdotV));
-    return 0.5f / (a + b);
-}
-
-// Evaluates microfacet specular BRDF
-inline float3 evalMicrofacet(const BrdfData data) 
-{
-    float D = GGX_D(max(0.00001f, data.alphaSquared), data.NdotH);
-    float G2 = Smith_G2_Height_Correlated_GGX_Lagarde(data.alphaSquared, data.NdotL, data.NdotV);
-
-    return data.F * (G2 * D * data.NdotL);
-}
-
-inline float3 sampleGGXVNDF(float3 Ve, float2 alpha2D, float2 u)
-{
-    float3 Vh = normalize(float3(alpha2D.x * Ve.x, alpha2D.y * Ve.y, Ve.z));
-
-    float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
-    float3 T1 = lensq > 0.0f ? float3(-Vh.y, Vh.x, 0.0f) * rsqrt(lensq) : float3(1.0f, 0.0f, 0.0f);
-    float3 T2 = cross(Vh, T1);
-
-    float r = sqrt(u.x);
-    float phi = 2 * PI * u.y;
-    float t1 = r * cos(phi);
-    float t2 = r * sin(phi);
-    float s = 0.5f * (1.0f + Vh.z);
-    t2 = lerp(sqrt(1.0f - t1 * t1), t2, s);
-
-    float3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0f, 1.0f - t1 * t1 - t2 * t2)) * Vh;
-
-    return normalize(float3(alpha2D.x * Nh.x, alpha2D.y * Nh.y, max(0.0f, Nh.z)));
-}
-
-inline float3 sampleSpecularMicrofacet(float3 Vlocal, float alpha, float alphaSquared, float3 specularF0,
-                                       float2 u, OUT_PARAMETER(float3) weight)
-{
-    // Sample a microfacet normal (H) in local space
-    float3 Hlocal;
-    if (alpha == 0.0f)
-    {
-        Hlocal = float3(0.0f, 0.0f, 1.0f);
-    }
-    else
-    {
-        Hlocal = sampleGGXVNDF(Vlocal, float2(alpha, alpha), u);
-    }
-
-    // Reflect view direction to obtain light vector
-    float3 Llocal = reflect(-Vlocal, Hlocal);
-
-    // Note: HdotL is same as HdotV here
-    // Clamp dot products here to small value to prevent numerical instability. Assume that rays incident from below the hemisphere have been filtered
-    float HdotL = max(0.00001f, min(1.0f, dot(Hlocal, Llocal)));
-    const float3 Nlocal = float3(0.0f, 0.0f, 1.0f);
-    float NdotL = max(0.00001f, min(1.0f, dot(Nlocal, Llocal)));
-    float NdotV = max(0.00001f, min(1.0f, dot(Nlocal, Vlocal)));
-    float NdotH = max(0.00001f, min(1.0f, dot(Nlocal, Hlocal)));
-    float3 F = evalFresnel(specularF0, shadowedF90(specularF0), HdotL);
-
-    // Calculate weight of the sample specific for selected sampling method 
-    // (this is microfacet BRDF divided by PDF of sampling method - notice how most terms cancel out)
-    weight = F * Smith_G2_Over_G1_Height_Correlated(alpha, alphaSquared, NdotL, NdotV);
-
-    return Llocal;
-}
-
-inline BrdfData prepareBRDFData(float3 N, float3 L, float3 V, float3 baseColor, float metalness, float roughness) 
-{
-    BrdfData data;
-
-    // Evaluate VNHL vectors
-    data.V = V;
-    data.N = N;
-    data.H = normalize(L + V);
-    data.L = L;
-
-    float NdotL = dot(N, L);
-    float NdotV = dot(N, V);
-    data.Vbackfacing = (NdotV <= 0.0f);
-    data.Lbackfacing = (NdotL <= 0.0f);
-
-    // Clamp NdotS to prevent numerical instability. Assume vectors below the hemisphere will be filtered using 'Vbackfacing' and 'Lbackfacing' flags
-    data.NdotL = min(max(0.00001f, NdotL), 1.0f);
-    data.NdotV = min(max(0.00001f, NdotV), 1.0f);
-
-    data.LdotH = saturate(dot(L, data.H));
-    data.NdotH = saturate(dot(N, data.H));
-    data.VdotH = saturate(dot(V, data.H));
-
-    // Unpack material properties
-    data.specularF0 = baseColorToSpecularF0(baseColor, metalness);
-    data.diffuseReflectance = baseColorToDiffuseReflectance(baseColor, metalness);
-
-    // Unpack 'perceptively linear' -> 'linear' -> 'squared' roughness
-    data.roughness = roughness;
-    data.alpha = roughness * roughness;
-    data.alphaSquared = data.alpha * data.alpha;
-
-    // Pre-calculate some more BRDF terms
-    data.F = evalFresnel(data.specularF0, shadowedF90(data.specularF0), data.LdotH);
-
-    return data;
-}
-
-inline float3 evalLambertian(const BrdfData data)
-{
-    return data.diffuseReflectance * (1.0f / PI * data.NdotL);
-}
-
-// Calculates probability of selecting BRDF (specular or diffuse) using the approximate Fresnel term
-inline float getBrdfProbability(float3 albedo, float metalness, float3 V, float3 shadingNormal)
-{
-
-    // Evaluate Fresnel term using the shading normal
-    // Note: we use the shading normal instead of the microfacet normal (half-vector) for Fresnel term here. 
-    // That's suboptimal for rough surfaces at grazing angles, but half-vector is yet unknown at this point
-    float specularF0 = luminance(baseColorToSpecularF0(albedo, metalness));
-    float diffuseReflectance = luminance(baseColorToDiffuseReflectance(albedo, metalness));
-    float Fresnel = saturate(luminance(evalFresnel(specularF0, shadowedF90(specularF0), max(0.0f, dot(V, shadingNormal)))));
-
-    // Approximate relative contribution of BRDFs using the Fresnel term
-    float specular = Fresnel;
-    float diffuse = diffuseReflectance * (1.0f - Fresnel); //< If diffuse term is weighted by Fresnel, apply it here as well
-
-    // Return probability of selecting specular BRDF over diffuse BRDF
-    float p = (specular / max(0.0001f, (specular + diffuse)));
-
-    // Clamp probability to avoid undersampling of less prominent BRDF
-    return clamp(p, 0.1f, 0.9f);
-}
-
-// This is an entry point for evaluation of all other BRDFs based on selected configuration (for direct light)
-inline float3 evalCombinedBRDF(float3 N, float3 L, float3 V, float3 albedo, float metalness, float roughness) 
-{
-    // Prepare data needed for BRDF evaluation - unpack material properties and evaluate commonly used terms (e.g. Fresnel, NdotL, ...)
-    const BrdfData data = prepareBRDFData(N, L, V, albedo, metalness, roughness);
-
-    // Ignore V and L rays "below" the hemisphere
-    if (data.Vbackfacing || data.Lbackfacing) return float3(0.0f, 0.0f, 0.0f);
-
-    // Eval specular and diffuse BRDFs
-    float3 specular = evalMicrofacet(data);
-    float3 diffuse = evalLambertian(data);
-
-    // Specular is already multiplied by F, just attenuate diffuse
-    return (float3(1.0f, 1.0f, 1.0f) - data.F) * diffuse + specular;
-
-    //return diffuse + specular;
-}
-
-// This is an entry point for evaluation of all other BRDFs based on selected configuration (for indirect light)
-inline bool evalIndirectCombinedBRDF(float2 u, float3 shadingNormal, float3 geometryNormal, float3 V, 
-                                     float3 albedo, float metalness, float roughness, const int brdfType,
-                                     OUT_PARAMETER(float3) rayDirection, OUT_PARAMETER(float3) sampleWeight) 
-{
-    // Ignore incident ray coming from "below" the hemisphere
-    if (dot(shadingNormal, V) <= 0.0f) return false;
-
-    // Transform view direction into local space of our sampling routines 
-    // (local space is oriented so that its positive Z axis points along the shading normal)
-    float4 qRotationToZ = getRotationToZAxis(shadingNormal);
-    float3 Vlocal = rotatePoint(qRotationToZ, V);
-    const float3 Nlocal = float3(0.0f, 0.0f, 1.0f);
-
-    float3 rayDirectionLocal = float3(0.0f, 0.0f, 0.0f);
-
-    if (brdfType == DIFFUSE_TYPE) 
-    {
-        // Sample diffuse ray using cosine-weighted hemisphere sampling 
-        rayDirectionLocal = sampleHemisphere(u);
-        const BrdfData data = prepareBRDFData(Nlocal, rayDirectionLocal, Vlocal, albedo, metalness, roughness);
-
-        // Function 'diffuseTerm' is predivided by PDF of sampling the cosine weighted hemisphere
-        sampleWeight = data.diffuseReflectance * 1.0f;
-	
-        // Sample a half-vector of specular BRDF. Note that we're reusing random variable 'u' here, but correctly it should be an new independent random number
-        float3 Hspecular = sampleGGXVNDF(Vlocal, float2(data.alpha, data.alpha), u);
-
-        // Clamp HdotL to small value to prevent numerical instability. Assume that rays incident from below the hemisphere have been filtered
-        float VdotH = max(0.00001f, min(1.0f, dot(Vlocal, Hspecular)));
-        sampleWeight *= (float3(1.0f, 1.0f, 1.0f) - evalFresnel(data.specularF0, shadowedF90(data.specularF0), VdotH));
-    }
-    else if (brdfType == SPECULAR_TYPE) 
-    {
-        const BrdfData data = prepareBRDFData(Nlocal, float3(0.0f, 0.0f, 1.0f), Vlocal, albedo, metalness, roughness);
-        rayDirectionLocal = sampleSpecularMicrofacet(Vlocal, data.alpha, data.alphaSquared, data.specularF0, u, sampleWeight);
-    }
-
-    // Prevent tracing direction with no contribution
-    if (luminance(sampleWeight) == 0.0f) return false;
-
-    // Transform sampled direction Llocal back to V vector space
-    rayDirection = normalize(rotatePoint(invertRotation(qRotationToZ), rayDirectionLocal));
-
-    // Prevent tracing direction "under" the hemisphere (behind the triangle)
-    if (dot(geometryNormal, rayDirection) <= 0.0f) return false;
+    // PDF of uniform distribution is (1/light count). Reciprocal of that PDF (simply a light count) is a weight of this sample
+    lightSampleWeight = float(g_dynamic.lightsNumber);
 
     return true;
+}
+
+// Samples a random light from the pool of all lights using RIS (Resampled Importance Sampling)
+bool sampleLightRIS(inout RngStateType rngState, float3 hitPosition, float3 surfaceNormal, out Light selectedSample, out float lightSampleWeight) {
+
+    if (g_dynamic.lightsNumber == 0) return false;
+
+    selectedSample = (Light)0;
+    float totalWeights = 0.0f;
+    float samplePdfG = 0.0f;
+
+    for (int i = 0; i < 8; i++) {
+
+        float candidateWeight;
+        Light candidate;
+        if (sampleLightUniform(rngState, hitPosition, surfaceNormal, candidate, candidateWeight)) {
+
+            float3	lightVector;
+            float lightDistance;
+            getLightData(candidate, hitPosition, lightVector, lightDistance);
+
+            // Ignore backfacing light
+            float3 L = normalize(lightVector);
+            if (dot(surfaceNormal, L) < 0.00001f) continue;
+
+            // Casting a shadow ray for all candidates here is expensive, but can significantly decrease noise
+            if (!castShadowRay(hitPosition, surfaceNormal, L, lightDistance)) continue;
+
+            float candidatePdfG = luminance(getLightIntensityAtPoint(candidate, length(lightVector)));
+            const float candidateRISWeight = candidatePdfG * candidateWeight;
+
+            totalWeights += candidateRISWeight;
+            if (rand(rngState) < (candidateRISWeight / totalWeights)) {
+                selectedSample = candidate;
+                samplePdfG = candidatePdfG;
+            }
+        }
+    }
+
+    if (totalWeights == 0.0f) {
+        return false;
+    }
+    else {
+        lightSampleWeight = (totalWeights / float(8)) / samplePdfG;
+        return true;
+    }
 }
 
 #endif
